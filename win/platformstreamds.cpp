@@ -27,8 +27,8 @@
 */
 
 #include "platformdeviceinfo.h"
-#include "platformstream.h"
-#include "platformcontext.h"
+#include "platformstreamds.h"
+#include "platformcontextds.h"
 #include "scopedcomptr.h"
 
 extern HRESULT FindCaptureDevice(IBaseFilter** ppSrcFilter, const wchar_t* wDeviceName);

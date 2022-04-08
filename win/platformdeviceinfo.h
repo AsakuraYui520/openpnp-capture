@@ -26,8 +26,6 @@
 #ifndef win_platformdeviceinfo_h
 #define win_platformdeviceinfo_h
 
-#include <windows.h>
-#include <Dshow.h>
 #include <string>
 
 #include "../common/deviceinfo.h"

@@ -1,4 +1,4 @@
-/*
+﻿/*
 
     OpenPnp-Capture: a video capture subsystem.
 
@@ -34,8 +34,8 @@
 
 #include "../common/logging.h"
 #include "scopedcomptr.h"
-#include "platformstream.h"
-#include "platformcontext.h"
+#include "platformstreamds.h"
+#include "platformcontextds.h"
 
 // a platform factory function needed by
 // libmain.cpp
@@ -53,7 +53,7 @@ PlatformContext::PlatformContext() : Context()
         // This might happen when another part of the program
         // as already called CoInitializeEx.
         // and we can carry on without problems... 
-        LOG(LOG_WARNING, "PlatformContext::CoInitializeEx failed (HRESULT = %08X)!\n", hr);
+        //LOG(LOG_WARNING, "PlatformContext::CoInitializeEx failed (HRESULT = %08X)!\n", hr);
     }
     else
     {
@@ -162,10 +162,14 @@ bool PlatformContext::enumerateDevices()
                 }
             }
 
-            enumerateFrameInfo(moniker, info);
-            m_devices.push_back(info);
-
             LOG(LOG_INFO, "ID %d -> %s\n", num_devices, info->m_name.c_str());
+
+            //Daheng相机枚举特别慢,也用不到
+            if (info->m_devicePath != L"Daheng Imaging Device 1 Device Path")
+            {
+                enumerateFrameInfo(moniker, info);
+                m_devices.push_back(info);
+            }
 
             VariantClear(&name);
 
@@ -416,54 +420,48 @@ bool PlatformContext::enumerateFrameInfo(IMoniker *moniker, platformDeviceInfo *
 
 HRESULT FindCaptureDevice(IBaseFilter** ppSrcFilter, const wchar_t* devicePath)
 {
-    ICreateDevEnum* pDevEnum = NULL;
-    IEnumMoniker* pEnum = NULL;
-    IMoniker* pMoniker = nullptr;
-    IPropertyBag* pbag = nullptr;
     HRESULT hr = S_OK;
 
     std::wstring strDevicePath = devicePath;
 
+    ICreateDevEnum* pDevEnum = nullptr;
     hr = CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pDevEnum));
-
-    if (FAILED(hr))
+    if (FAILED(hr)) {
         return hr;
-
+    }
     ScopedComPtr<ICreateDevEnum> devEnum(pDevEnum);
 
-    hr = pDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &pEnum, 0);
+    IEnumMoniker* pEnumMoniker = nullptr;
+    hr = devEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &pEnumMoniker, 0);
+    if (FAILED(hr)) {
+        return hr;
+    }
+    ScopedComPtr<IEnumMoniker> enumMoniker(pEnumMoniker);
 
-    ScopedComPtr<IEnumMoniker> enumMoniker(pEnum);
-    if (hr == S_OK) {
+    IMoniker* pMoniker = nullptr;
+    for (int num_devices = 0; enumMoniker->Next(1, &pMoniker, 0) == S_OK; ++num_devices)
+    {
+        ScopedComPtr<IMoniker> moniker(pMoniker);
 
-        while (enumMoniker->Next(1, &pMoniker, 0) == S_OK)
-        {
-            hr = pMoniker->BindToStorage(0, 0, IID_PPV_ARGS(&pbag));
-            ScopedComPtr<IPropertyBag> propertyBag(pbag);
-
-            if (FAILED(hr)) {
-                pMoniker->Release();
-                continue;  // Skip this one, maybe the next one will work.
-            }
-
-            bool bMatch = false;
-
-            VARIANT varName;
-            VariantInit(&varName);
-            hr = pbag->Read(L"DevicePath", &varName, 0);
-
-            if (SUCCEEDED(hr)) {
-                if (strDevicePath == varName.bstrVal)
-                    bMatch = true;
-            }
-            VariantClear(&varName);
-
-            if (bMatch)
-            {
-                hr = pMoniker->BindToObject(0, 0, IID_PPV_ARGS(ppSrcFilter));
-                return hr;
-            }
+        IPropertyBag* pbag = nullptr;
+        hr = moniker->BindToStorage(0, 0, IID_PPV_ARGS(&pbag));
+        if (FAILED(hr)) {
+            continue;  // Skip this one, maybe the next one will work.
         }
+        ScopedComPtr<IPropertyBag> propertyBag(pbag);
+
+        VARIANT varName;
+        VariantInit(&varName);
+        hr = pbag->Read(L"DevicePath", &varName, 0);
+        //if ((SUCCEEDED(hr) && strDevicePath == varName.bstrVal) ||
+        //    (FAILED(hr) && strDevicePath == std::to_wstring(num_devices))) {
+        if ((SUCCEEDED(hr) && strDevicePath == varName.bstrVal)){
+            VariantClear(&varName);
+            hr = pMoniker->BindToObject(0, 0, IID_PPV_ARGS(ppSrcFilter));
+            pMoniker->Release();
+            return hr;
+        }
+        VariantClear(&varName);
     }
 
     return E_FAIL;

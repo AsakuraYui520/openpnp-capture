@@ -29,6 +29,10 @@
 #ifndef win_scopedcomptr_h
 #define win_scopedcomptr_h
 
+#include <comdef.h>
+#include <assert.h>
+#include <wrl/client.h>
+
 /** The ScopedComPtr takes a pointer to a generic COM
     interface object and will release the object when
     the owning ScopedComPtr is released/destroyed.
@@ -120,5 +124,12 @@ template <class T> void SafeRelease(T **ppT)
         *ppT = NULL;
     }
 }
+
+
+template <typename T> inline T absDiff(T a, T b) { return a >= b ? a - b : b - a; }
+
+template <class T>
+using ComPtr = Microsoft::WRL::ComPtr<T>;
+
 
 #endif
