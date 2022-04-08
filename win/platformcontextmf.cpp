@@ -33,20 +33,8 @@
 #include <stdio.h>
 
 #include "../common/logging.h"
-#include "scopedcomptr.h"
 #include "platformstreammf.h"
 #include "platformcontextmf.h"
-
-#ifdef _MSC_VER
-#pragma warning(disable:4503)
-#pragma comment(lib, "mfplat")
-#pragma comment(lib, "mf")
-#pragma comment(lib, "mfuuid")
-#pragma comment(lib, "Strmiids")
-#pragma comment(lib, "Mfreadwrite")
-#endif
-//==================================================================================================
-
 
 
 // a platform factory function needed by
@@ -92,7 +80,7 @@ bool PlatformContextMF::enumerateDevices()
 	HRESULT hr = S_OK;
 	ComPtr<IMFAttributes> pAttributes;
 
-	hr = MFCreateAttributes(&pAttributes, 1);
+	hr = MFCreateAttributes(pAttributes.GetAddressOf(), 1);
 	if (!SUCCEEDED(hr))
 		return false;
 
@@ -102,58 +90,48 @@ bool PlatformContextMF::enumerateDevices()
 		return false;
 
 	UINT32   cDevices;
-	IMFActivate** ppDevices = NULL;
+	IMFActivate** ppDevices = nullptr;
 
 	hr = MFEnumDeviceSources(pAttributes.Get(), &ppDevices, &cDevices);
 	if (!SUCCEEDED(hr))
 		return false;
 
-	for (UINT32 deviceIndex = 0; deviceIndex < cDevices; ++deviceIndex)
+	for (UINT32 index = 0; index < cDevices; ++index)
 	{
-		WCHAR* ppszName = nullptr;
-		WCHAR* ppszDevicePath = nullptr;
+		platformDeviceInfo* info = new platformDeviceInfo();
 
-		std::wstring deviceName;
-		std::wstring devicePath;
+		WCHAR* deviceName = NULL;
+		UINT32 deviceNameLength = 0;
+		UINT32 deviceIdLength = 0;
+		WCHAR* deviceId = NULL;
 
-		UINT32 cchLengh = 0;
-		hr = ppDevices[deviceIndex]->GetAllocatedString(
-			MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME,
-			&ppszName,
-			&cchLengh
-		);
+		hr = ppDevices[index]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME,
+			&deviceName, &deviceNameLength);
 
-		if (ppszName)
+		if (SUCCEEDED(hr))
+			info->m_name = wstringToString(deviceName);
+
+		CoTaskMemFree(deviceName);
+
+		hr = ppDevices[index]->GetAllocatedString(
+			MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK, &deviceId,
+			&deviceIdLength);
+		if (SUCCEEDED(hr))
 		{
-			deviceName = ppszName;
-			CoTaskMemFree(ppszName);
+			info->m_uniqueID = wstringToString(deviceId);
+			info->m_devicePath = deviceId;
 		}
 
-		hr = ppDevices[deviceIndex]->GetAllocatedString(
-			MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK,
-			&ppszDevicePath,
-			&cchLengh
-		);
-
-		if (ppszDevicePath)
-		{
-			devicePath = ppszDevicePath;
-			CoTaskMemFree(ppszDevicePath);
-		}
+		CoTaskMemFree(deviceId);
 
 
-		LOG(LOG_INFO, "ID %d -> %s\n", deviceIndex, wcharPtrToString(deviceName.c_str()).c_str());
+		LOG(LOG_INFO, "ID %d -> %s\n", index, info->m_name.c_str());
 
 		ComPtr<IMFMediaSource> pMediaSource;
-		hr = ppDevices[deviceIndex]->ActivateObject(__uuidof(IMFMediaSource), (void**)&pMediaSource);
-		if (!SUCCEEDED(hr))
-		{
-			LOG(LOG_DEBUG, "ActivateObject failed (HRESULT = %08X)!\n", hr);
-			continue;
-		}
-
 		ComPtr<IMFSourceReader> pSourceReader;
-		hr = MFCreateSourceReaderFromMediaSource(pMediaSource.Get(), NULL, &pSourceReader);
+
+		hr = ppDevices[index]->ActivateObject(__uuidof(IMFMediaSource), (void**)pMediaSource.GetAddressOf());
+		hr = MFCreateSourceReaderFromMediaSource(pMediaSource.Get(), NULL, pSourceReader.GetAddressOf());
 		if (!SUCCEEDED(hr))
 		{
 			LOG(LOG_DEBUG, "MFCreateSourceReaderFromMediaSource failed (HRESULT = %08X)!\n", hr);
@@ -162,35 +140,42 @@ bool PlatformContextMF::enumerateDevices()
 
 		LOG(LOG_DEBUG, "Enumerate native media type:\n");
 
-		platformDeviceInfo* info = new platformDeviceInfo();
 
-		info->m_name = wcharPtrToString(deviceName.c_str());
-		info->m_uniqueID = wcharPtrToString(devicePath.c_str());
-		info->m_devicePath = devicePath;
+		DWORD dwMediaTypeIndex = 0;
+		GUID subtype = GUID_NULL;
+		UINT32 width = 0u;
+		UINT32 height = 0u;
+		UINT32 frameRateNum = 0u;
+		UINT32 frameRateDenom = 0U;
 
-		int index = 0;
 		while (SUCCEEDED(hr))
 		{
-			ComPtr<IMFMediaType> raw_type;
-			hr = pSourceReader->GetNativeMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, index++, &raw_type);
+			ComPtr<IMFMediaType> mediaFormat;
+			hr = pSourceReader->GetNativeMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, dwMediaTypeIndex++, mediaFormat.GetAddressOf());
 
 			if (FAILED(hr))
 				break;
 
-			MediaType mediaType(raw_type.Get());
-			if (mediaType.majorType == MFMediaType_Video)
-			{
-				CapFormatInfo frameInfo;
-				frameInfo.width = mediaType.width;
-				frameInfo.height = mediaType.height;
-				frameInfo.fourcc = mediaType.subType.Data1;
-				frameInfo.fps = (int)mediaType.getFramerate();
-				//frameInfo.bpp
+			CapFormatInfo frameInfo = { 0 };
 
-				info->m_formats.push_back(frameInfo);
+			if (SUCCEEDED(mediaFormat->GetGUID(MF_MT_SUBTYPE, &subtype)))
+				frameInfo.fourcc = subtype.Data1;
 
-				LOG(LOG_VERBOSE, "    Format ID[%d] %d x %d  %d fps FOURCC=%s\n", index - 1, frameInfo.width, frameInfo.height, frameInfo.fps, fourCCToString(frameInfo.fourcc).c_str());
+			if (SUCCEEDED(MFGetAttributeSize(mediaFormat.Get(), MF_MT_FRAME_SIZE, &width, &height))) {
+				frameInfo.width = width;
+				frameInfo.height = height;
+
 			}
+
+			if (SUCCEEDED(MFGetAttributeRatio(mediaFormat.Get(), MF_MT_FRAME_RATE, &frameRateNum, &frameRateDenom))) {
+				frameInfo.fps = frameRateDenom != 0 ? (uint32_t)(((double)frameRateNum) / ((double)frameRateDenom)) : 0;
+			}
+
+			info->m_formats.push_back(frameInfo);
+
+			LOG(LOG_VERBOSE, "    Format ID[%d] %d x %d  %d fps FOURCC=%s\n",
+				dwMediaTypeIndex - 1, frameInfo.width, frameInfo.height, 
+				frameInfo.fps, fourCCToString(frameInfo.fourcc).c_str());
 		}
 
 		m_devices.push_back(info);

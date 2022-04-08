@@ -1,4 +1,4 @@
-﻿/*
+/*
 
     OpenPnp-Capture: a video capture subsystem.
 
@@ -37,8 +37,8 @@
 
 #include "../common/logging.h"
 #include "scopedcomptr.h"
-#include "platformstreamds.h"
-#include "platformcontextds.h"
+#include "platformstream.h"
+#include "platformcontext.h"
 
 // a platform factory function needed by
 // libmain.cpp
@@ -56,7 +56,7 @@ PlatformContext::PlatformContext() : Context()
         // This might happen when another part of the program
         // as already called CoInitializeEx.
         // and we can carry on without problems... 
-        //LOG(LOG_WARNING, "PlatformContext::CoInitializeEx failed (HRESULT = %08X)!\n", hr);
+        LOG(LOG_WARNING, "PlatformContext::CoInitializeEx failed (HRESULT = %08X)!\n", hr);
     }
     else
     {
@@ -162,14 +162,10 @@ bool PlatformContext::enumerateDevices()
             info->m_uniqueID.append(wstringToString(info->m_devicePath));
             LOG(LOG_INFO, "     -> PATH %s\n", wstringToString(info->m_devicePath).c_str());
 
-            LOG(LOG_INFO, "ID %d -> %s\n", num_devices, info->m_name.c_str());
+            enumerateFrameInfo(moniker, info);
+            m_devices.push_back(info);
 
-            //Daheng相机枚举特别慢,也用不到
-            if (info->m_devicePath != L"Daheng Imaging Device 1 Device Path")
-            {
-                enumerateFrameInfo(moniker, info);
-                m_devices.push_back(info);
-            }
+            LOG(LOG_INFO, "ID %d -> %s\n", num_devices, info->m_name.c_str());
 
             VariantClear(&name);
 

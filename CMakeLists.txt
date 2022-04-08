@@ -83,24 +83,20 @@ IF (WIN32)
     # remove annoying 'unsafe' function warnings
     add_definitions(-D_CRT_SECURE_NO_WARNINGS)
     
-    option(USE_SOURCE_READER_ASYNC_CALLBACK "Use Source Reader Async Callback" TRUE)
+    option(USE_MEDIA_FOUNDATION "Use Media Foundation API instead DirectShow" FALSE)
     
-    if (USE_MEDIA_FOUNDATION)
-    add_definitions(-DUSE_SOURCE_READER_ASYNC_CALLBACK)
-    endif()
-    
-    option(USE_MEDIA_FOUNDATION "Use Media Foundation API instead DirectShow" TRUE)
-    
-    # add files for WIN32
+    # add files for Media Foundation
     if (USE_MEDIA_FOUNDATION)
     target_sources(openpnp-capture PRIVATE win/platformcontextmf.cpp
                                            win/platformstreammf.cpp)
+    target_link_libraries(openpnp-capture mfplat mf mfuuid Mfreadwrite shlwapi)                                       
+    # add files for DirectShow 
     else()
-    target_sources(openpnp-capture PRIVATE win/platformcontextds.cpp
-                                           win/platformstreamds.cpp)    
+    target_sources(openpnp-capture PRIVATE win/platformcontext.cpp
+                                           win/platformstream.cpp)                                   
     endif()
-
-    target_link_libraries(openpnp-capture strmiids)
+    
+    target_link_libraries(openpnp-capture strmiids)  
 
     # add windows-specific test application
     add_subdirectory(win/tests)
@@ -147,8 +143,8 @@ ELSEIF(UNIX)
     target_link_libraries(openpnp-capture PUBLIC Threads::Threads)
 
     # add turbojpeg library
-    #find_package(PkgConfig REQUIRED)
-    #pkg_search_module(TurboJPEG libturbojpeg)
+    find_package(PkgConfig REQUIRED)
+    pkg_search_module(TurboJPEG libturbojpeg)
     if( TurboJPEG_FOUND )
         link_directories(${TurboJPEG_LIBDIR})
         target_include_directories(openpnp-capture PUBLIC ${TurboJPEG_INCLUDE_DIRS})
@@ -166,7 +162,7 @@ ELSEIF(UNIX)
     endif()
 
     # add linux-specific test application
-    #add_subdirectory(linux/tests)
+    add_subdirectory(linux/tests)
 
     # install lib and headers
     install(FILES include/openpnp-capture.h

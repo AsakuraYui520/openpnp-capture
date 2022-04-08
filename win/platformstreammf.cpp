@@ -29,18 +29,11 @@
 #include "platformdeviceinfo.h"
 #include "platformstreammf.h"
 #include "platformcontextmf.h"
-#include "scopedcomptr.h"
-#include <shlwapi.h>  // QISearch
 
-
-#ifdef _MSC_VER
-#pragma comment(lib, "shlwapi.lib")
-#endif
-
-
+enum { MEDIA_TYPE_INDEX_DEFAULT = 0xffffffff };
 
 /** convert a FOURCC uint32_t to human readable form */
-std::string fourCCToStringWin(uint32_t fourcc)
+static std::string fourCCToStringMF(uint32_t fourcc)
 {
 	if (fourcc == 20)
 		return std::string("RGB24");
@@ -57,6 +50,16 @@ std::string fourCCToStringWin(uint32_t fourcc)
 	}
 	return v;
 };
+
+static inline  bool qFuzzyCompare(double p1, double p2)
+{
+	return (abs(p1 - p2) * 1000000000000. <= min(abs(p1), abs(p2)));
+}
+
+static inline  bool qFuzzyCompare(float p1, float p2)
+{
+	return (abs(p1 - p2) * 100000.f <= min(abs(p1), abs(p2)));
+}
 
 
 Stream* createPlatformStream()
@@ -99,12 +102,12 @@ static const property_t gs_properties[] =
 
 PlatformStreamMF::PlatformStreamMF() :
 	Stream(),
-	m_ReaderCB(nullptr),
-	m_pMediaSource(nullptr),
-	m_pSourceReader(nullptr),
+	m_videoSource(nullptr),
+	m_sourceReader(nullptr),
 	m_camControl(nullptr),
 	m_videoProcAmp(nullptr),
-	m_bCapture(false)
+	m_videoMediaType(nullptr),
+	m_streaming(false)
 {
 
 }
@@ -116,48 +119,7 @@ PlatformStreamMF::~PlatformStreamMF()
 
 void PlatformStreamMF::close()
 {
-	LOG(LOG_INFO, "closing stream\n");
-
-#ifdef USE_SOURCE_READER_ASYNC_CALLBACK
-
-	if (m_ReaderCB && m_bCapture)
-	{
-		HANDLE flushed = CreateEvent(NULL, TRUE, FALSE, NULL);
-		const int kFlushTimeOutInMs = 1000;
-		bool wait = false;
-
-		m_bCapture = false;
-		m_ReaderCB->SetSignalOnFlush(&flushed);
-		wait = SUCCEEDED(m_pSourceReader->Flush(static_cast<DWORD>(MF_SOURCE_READER_ALL_STREAMS)));
-		if (!wait) {
-			m_ReaderCB->SetSignalOnFlush(NULL);
-		}
-
-		// If the device has been unplugged, the Flush() won't trigger the event
-		// and a timeout will happen.
-		// TODO(tommi): Hook up the IMFMediaEventGenerator notifications API and
-		// do not wait at all after getting MEVideoCaptureDeviceRemoved event.
-		// See issue/226396.
-		if (wait)
-			WaitForSingleObject(flushed, kFlushTimeOutInMs);
-
-		SafeRelease(&m_ReaderCB);
-	}
-#else
-	m_bCapture = false;
-	if (m_readThread.joinable())
-	{
-		if (std::this_thread::get_id() != m_readThread.get_id())
-			m_readThread.join();
-		else
-			m_readThread.detach();
-	}
-#endif
-
-	SafeRelease(&m_camControl);
-	SafeRelease(&m_videoProcAmp);
-	SafeRelease(&m_pSourceReader);
-	SafeRelease(&m_pMediaSource);
+	stopStreaming();
 
 	m_owner = nullptr;
 	m_width = 0;
@@ -166,76 +128,6 @@ void PlatformStreamMF::close()
 	m_isOpen = false;
 }
 
-static HRESULT findCaptureDevice(const wchar_t* devicePath, ComPtr<IMFActivate>& pActivate)
-{
-	ComPtr<IMFAttributes> pAttributes;
-
-	HRESULT hr = S_OK;
-	hr = MFCreateAttributes(&pAttributes, 1);
-	if (!SUCCEEDED(hr))
-		return hr;
-
-	hr = pAttributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID);
-
-	if (!SUCCEEDED(hr))
-		return hr;
-
-	UINT32   cDevices;
-	IMFActivate** ppDevices = NULL;
-
-	hr = MFEnumDeviceSources(pAttributes.Get(), &ppDevices, &cDevices);
-	if (!SUCCEEDED(hr))
-		return hr;
-
-	for (UINT32 deviceIndex = 0; deviceIndex < cDevices; ++deviceIndex)
-	{
-		WCHAR* ppszName = nullptr;
-		WCHAR* ppszDevicePath = nullptr;
-
-		std::wstring strDeviceName;
-		std::wstring strDevicePath;
-
-		UINT32 cchLengh = 0;
-		hr = ppDevices[deviceIndex]->GetAllocatedString(
-			MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME,
-			&ppszName,
-			&cchLengh
-		);
-
-		if (ppszName)
-		{
-			strDeviceName = ppszName;
-			CoTaskMemFree(ppszName);
-		}
-
-		hr = ppDevices[deviceIndex]->GetAllocatedString(
-			MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK,
-			&ppszDevicePath,
-			&cchLengh
-		);
-
-		if (ppszDevicePath)
-		{
-			strDevicePath = ppszDevicePath;
-			CoTaskMemFree(ppszDevicePath);
-		}
-
-		if (devicePath == strDevicePath)
-		{
-			pActivate = ppDevices[deviceIndex];
-			break;
-		}
-	}
-
-	if (ppDevices)
-	{
-		for (UINT32 i = 0; i < cDevices; ++i)
-			ppDevices[i]->Release();
-		CoTaskMemFree(ppDevices);
-	}
-
-	return S_OK;
-}
 
 bool PlatformStreamMF::open(Context* owner, deviceInfo* device, uint32_t width, uint32_t height,
 	uint32_t fourCC, uint32_t fps)
@@ -271,106 +163,41 @@ bool PlatformStreamMF::open(Context* owner, deviceInfo* device, uint32_t width, 
 	m_height = 0;
 
 	HRESULT hr = S_OK;
-	ComPtr<IMFActivate> pActivate;
-	hr = findCaptureDevice(dinfo->m_devicePath.c_str(), pActivate);
+
+	ComPtr<IMFAttributes> sourceAttributes;
+	hr = MFCreateAttributes(sourceAttributes.GetAddressOf(), 2);
+	hr = sourceAttributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID);
+	hr = sourceAttributes->SetString(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK, dinfo->m_devicePath.c_str());
+
+	hr = MFCreateDeviceSource(sourceAttributes.Get(), &m_videoSource);
+
 	if (!SUCCEEDED(hr))
 	{
 		LOG(LOG_CRIT, "Could not find device %s\n", dinfo->m_uniqueID.c_str());
 		return false;
 	}
 
+	ComPtr<IMFAttributes> readerAttributes;
+	hr = MFCreateAttributes(readerAttributes.GetAddressOf(), 1);
+	readerAttributes->SetUnknown(MF_SOURCE_READER_ASYNC_CALLBACK, this);
 
-	hr = pActivate->ActivateObject(IID_IMFMediaSource, (void**)&m_pMediaSource);
-	if (!SUCCEEDED(hr))
-	{
-		LOG(LOG_ERR, "ActivateObject failed (HRESULT = %08X)!\n", hr);
-		return false;
-	}
 
-	ComPtr<IMFAttributes> pAttributes;
-	MFCreateAttributes(&pAttributes, 10);
-
-	pAttributes->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, true);
-	pAttributes->SetUINT32(MF_SOURCE_READER_DISABLE_DXVA, false);
-	pAttributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, false);
-	pAttributes->SetUINT32(MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, true);
-
-#ifdef USE_SOURCE_READER_ASYNC_CALLBACK
-	m_ReaderCB = new SourceReaderCB();
-	m_ReaderCB->m_stream = this;
-	pAttributes->SetUnknown(MF_SOURCE_READER_ASYNC_CALLBACK, m_ReaderCB);
-#endif
-
-	hr = MFCreateSourceReaderFromMediaSource(m_pMediaSource, pAttributes.Get(), &m_pSourceReader);
+	hr = MFCreateSourceReaderFromMediaSource(m_videoSource, readerAttributes.Get(), &m_sourceReader);
 	if (!SUCCEEDED(hr))
 	{
 		LOG(LOG_ERR, "MFCreateSourceReaderFromMediaSource failed (HRESULT = %08X)!\n", hr);
 		return false;
 	}
 
-	ComPtr<IMFMediaType> pUserSetMediaType;
-	MFCreateMediaType(&pUserSetMediaType);
+	DWORD mediaTypeIndex = findMediaTypeIndex(width, height, fourCC, fps);
 
-	MFSetAttributeSize(pUserSetMediaType.Get(), MF_MT_FRAME_SIZE, width, height);
-	MFSetAttributeSize(pUserSetMediaType.Get(), MF_MT_FRAME_SIZE, width, height);
-
-	UINT32 frameRateNum = (UINT32)round(fps * 1000.0);
-	UINT32 frameRateDenom = 1000;
-	MFSetAttributeRatio(pUserSetMediaType.Get(), MF_MT_FRAME_RATE, frameRateNum, frameRateDenom);
-	pUserSetMediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-	GUID subType = MFVideoFormat_Base;
-	subType.Data1 = fourCC;
-	pUserSetMediaType->SetGUID(MF_MT_SUBTYPE, subType);
-
-	hr = m_pSourceReader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, pUserSetMediaType.Get());
-	if (!SUCCEEDED(hr))
-	{
-		LOG(LOG_ERR, "SetCurrentMediaType failed (HRESULT = %08X)!\n", hr);
+	if (!SUCCEEDED(prepareVideoStream(mediaTypeIndex))) {
+		LOG(LOG_ERR, "prepareVideoStream failed (HRESULT = %08X)!\n", hr);
 		return false;
 	}
-
-
-	ComPtr<IMFMediaType> pCurrentMediaType;
-	hr = m_pSourceReader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, &pCurrentMediaType);
-	if (!SUCCEEDED(hr))
-	{
-		LOG(LOG_ERR, "GetCurrentMediaType failed (HRESULT = %08X)!\n", hr);
-		return false;
-	}
-
-	{
-		MFGetAttributeSize(pCurrentMediaType.Get(), MF_MT_FRAME_SIZE, &m_width, &m_height);
-		MFGetAttributeRatio(pCurrentMediaType.Get(), MF_MT_FRAME_RATE, &frameRateNum, &frameRateDenom);
-		double framerate = frameRateDenom != 0 ? ((double)frameRateNum) / ((double)frameRateDenom) : 0;
-		pCurrentMediaType->GetGUID(MF_MT_SUBTYPE, &subType);
-
-		m_frameBuffer.resize(m_width * m_height * 3);
-
-		LOG(LOG_VERBOSE, "Camera output format %d x %d  %d fps FOURCC=%s\n",
-			m_width,
-			m_height,
-			(int)framerate,
-			fourCCToString(subType.Data1).c_str());
-	}
-
-	ComPtr<IMFMediaType> pConvertedType;
-	MFCreateMediaType(&pConvertedType);
-	MFSetAttributeSize(pConvertedType.Get(), MF_MT_FRAME_SIZE, m_width, m_height);
-	pConvertedType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-	pConvertedType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB24);
-
-	if (m_transform.IsCompressedMediaType(pCurrentMediaType.Get()))
-	{
-		ComPtr<IMFMediaType> pUncomprssedType;
-		m_transform.InitDecoder(pCurrentMediaType.Get(), pUncomprssedType);
-		m_transform.InitColorSpaceTransform(pUncomprssedType.Get(), pConvertedType.Get());
-	}
-	else
-		m_transform.InitColorSpaceTransform(pCurrentMediaType.Get(), pConvertedType.Get());
-
 
 	m_camControl = nullptr;
-	hr = m_pSourceReader->GetServiceForStream((DWORD)MF_SOURCE_READER_MEDIASOURCE, GUID_NULL, IID_PPV_ARGS(&m_camControl));
+	hr = m_sourceReader->GetServiceForStream((DWORD)MF_SOURCE_READER_MEDIASOURCE, GUID_NULL, IID_PPV_ARGS(&m_camControl));
 	if (!SUCCEEDED(hr))
 	{
 		LOG(LOG_ERR, "Could not create IAMCameraControl\n");
@@ -380,78 +207,28 @@ bool PlatformStreamMF::open(Context* owner, deviceInfo* device, uint32_t width, 
 	dumpCameraProperties();
 
 	m_videoProcAmp = nullptr;
-	hr = m_pSourceReader->GetServiceForStream((DWORD)MF_SOURCE_READER_MEDIASOURCE, GUID_NULL, IID_PPV_ARGS(&m_videoProcAmp));
-	if (hr != S_OK)
+	hr = m_sourceReader->GetServiceForStream((DWORD)MF_SOURCE_READER_MEDIASOURCE, GUID_NULL, IID_PPV_ARGS(&m_videoProcAmp));
+	if (!SUCCEEDED(hr))
 	{
 		LOG(LOG_WARNING, "Could not create IAMVideoProcAmp\n");
 	}
 
-#ifdef USE_SOURCE_READER_ASYNC_CALLBACK
-	m_bCapture = true;
-	if (FAILED(hr = m_pSourceReader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, NULL, NULL, NULL, NULL)))
+	hr = m_sourceReader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, NULL, NULL, NULL, NULL);
+	if (!SUCCEEDED(hr))
 	{
-		LOG(LOG_ERR, "videoio(MSMF): can't grab frame - initial async ReadSample() call failed: (HRESULT = %08X)!\n", hr);
-		m_bCapture = false;
+		LOG(LOG_ERR, "ReadSample() call failed: (HRESULT = %08X)!\n", hr);
 		return false;
 	}
 
 	m_isOpen = true;
-#else
-	m_isOpen = true;
-	m_bCapture = true;
-	m_readThread = std::thread(&PlatformStreamMF::readThreadFunc, this);
-#endif
 
 	return true;
-}
-
-void PlatformStreamMF::readThreadFunc()
-{
-	DWORD dwStreamIndex, dwStreamFlags;
-	LONGLONG llTimeStamp;
-
-	HRESULT hr = S_OK;
-
-	m_frames = 0;
-	m_newFrame = false;
-
-	while (m_bCapture)
-	{
-		ComPtr<IMFSample> sample;
-		hr = m_pSourceReader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, &dwStreamIndex, &dwStreamFlags, &llTimeStamp, &sample);
-		if (FAILED(hr))
-		{
-			LOG(LOG_ERR, "ReadSample() call failed : (HRESULT = % 08X)!\n", hr);
-			break;
-		}
-
-		if (dwStreamFlags & MF_SOURCE_READERF_ENDOFSTREAM)
-		{
-			LOG(LOG_ERR, "ReadSample() end of stream\n");
-			break;
-		}
-
-		if (dwStreamFlags & MF_SOURCE_READERF_STREAMTICK && !sample)
-		{
-			continue;
-		}
-
-		m_bufferMutex.lock();
-		hr = m_transform.DoTransform(sample.Get(), m_frameBuffer);
-		m_newFrame = true;
-		m_frames++;
-		m_bufferMutex.unlock();
-		if (FAILED(hr))
-		{
-			LOG(LOG_ERR, "DoTransform() call failed : (HRESULT = % 08X)!\n", hr);
-			break;
-		}
-	}
 }
 
 
 bool PlatformStreamMF::setFrameRate(uint32_t fps)
 {
+	std::unique_lock<std::mutex> locker(m_mutex);
 	//FIXME: implement
 	return false;
 }
@@ -527,21 +304,6 @@ void PlatformStreamMF::dumpCameraProperties()
 		}
 #endif       
 	}
-}
-
-void PlatformStreamMF::OnIncomingCapturedData(IMFSample* sample)
-{
-	if (sample)
-	{
-		m_bufferMutex.lock();
-		m_transform.DoTransform(sample, m_frameBuffer);
-		m_frames++;
-		m_newFrame = true;
-		m_bufferMutex.unlock();
-	}
-
-	if (m_bCapture)
-		m_pSourceReader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, NULL, NULL, NULL, NULL);
 }
 
 
@@ -757,6 +519,41 @@ bool PlatformStreamMF::getDSProperty(uint32_t propID, long& value, long& flags)
 	return false;
 }
 
+void PlatformStreamMF::stopStreaming()
+{
+	std::unique_lock<std::mutex> locker(m_mutex);
+
+	LOG(LOG_INFO, "stop streaming\n");
+
+	if (m_videoMediaType) {
+		m_videoMediaType->Release();
+		m_videoMediaType = nullptr;
+	}
+
+	if (m_camControl) {
+		m_camControl->Release();
+		m_camControl = nullptr;
+	}
+
+	if (m_videoProcAmp) {
+		m_videoProcAmp->Release();
+		m_videoProcAmp = nullptr;
+	}
+
+	if (m_sourceReader) {
+		m_sourceReader->Release();
+		m_sourceReader = nullptr;
+	}
+
+	if (m_videoSource) {
+		m_videoSource->Shutdown();
+		m_videoSource->Release();
+		m_videoSource = nullptr;
+	}
+
+	m_streaming = false;
+}
+
 /** get property (exposure, zoom etc) of camera/stream */
 bool PlatformStreamMF::getProperty(uint32_t propID, int32_t& outValue)
 {
@@ -798,129 +595,211 @@ bool PlatformStreamMF::getAutoProperty(uint32_t propID, bool& enabled)
 	return false;
 }
 
-
-void PlatformStreamMF::submitBuffer(const uint8_t* ptr, size_t bytes)
+//from IUnknown
+STDMETHODIMP PlatformStreamMF::QueryInterface(REFIID riid, LPVOID* ppvObject)
 {
-	m_bufferMutex.lock();
-
-	if (m_frameBuffer.size() == 0)
-	{
-		LOG(LOG_ERR, "Stream::m_frameBuffer size is 0 - cant store frame buffers!\n");
+	if (!ppvObject)
+		return E_POINTER;
+	if (riid == IID_IMFSourceReaderCallback) {
+		*ppvObject = static_cast<IMFSourceReaderCallback*>(this);
 	}
-
-	// Generate warning every 100 frames if the frame buffer is not
-	// the expected size. 
-
-	const uint32_t wantSize = m_width * m_height * 3;
-	if ((bytes != wantSize) && ((m_frames % 100) == 0))
-	{
-		LOG(LOG_WARNING, "Warning: captureFrame received incorrect buffer size (got %d want %d)\n", bytes, wantSize);
+	//else if (riid == IID_IMFSinkWriterCallback) {
+	//	*ppvObject = static_cast<IMFSinkWriterCallback*>(this);
+	//}
+	else if (riid == IID_IUnknown) {
+		*ppvObject = static_cast<IUnknown*>(static_cast<IMFSourceReaderCallback*>(this));
 	}
-
-	if (bytes <= m_frameBuffer.size())
-	{
-		// The Win32 API delivers upside-down BGR frames.
-		// Conversion to regular RGB frames is done by
-		// byte-reversing the buffer
-
-		for (size_t y = 0; y < m_height; y++)
-		{
-			uint8_t* dst = &m_frameBuffer[(y * m_width) * 3];
-			const uint8_t* src = ptr + (m_width * 3) * (m_height - y - 1);
-			for (uint32_t x = 0; x < m_width; x++)
-			{
-				uint8_t b = *src++;
-				uint8_t g = *src++;
-				uint8_t r = *src++;
-				*dst++ = r;
-				*dst++ = g;
-				*dst++ = b;
-			}
-		}
-
-		m_newFrame = true;
-		m_frames++;
+	else {
+		*ppvObject = nullptr;
+		return E_NOINTERFACE;
 	}
-
-	m_bufferMutex.unlock();
+	AddRef();
+	return S_OK;
 }
 
-
-
-HRESULT __stdcall SourceReaderCB::QueryInterface(REFIID iid, void** ppv)
+STDMETHODIMP_(ULONG) PlatformStreamMF::AddRef(void)
 {
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable:4838)
-#endif
-	static const QITAB qit[] =
-	{
-		QITABENT(SourceReaderCB, IMFSourceReaderCallback),
-		{ 0 },
-	};
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
-	return QISearch(this, qit, iid, ppv);
+	return InterlockedIncrement(&m_cRef);
 }
 
-ULONG __stdcall SourceReaderCB::AddRef()
+STDMETHODIMP_(ULONG) PlatformStreamMF::Release(void)
 {
-	return InterlockedIncrement(&m_nRefCount);
-}
-
-ULONG __stdcall SourceReaderCB::Release()
-{
-	ULONG uCount = InterlockedDecrement(&m_nRefCount);
-	if (uCount == 0)
-	{
+	LONG cRef = InterlockedDecrement(&m_cRef);
+	if (cRef == 0) {
 		delete this;
 	}
-	return uCount;
+	return cRef;
 }
 
-HRESULT __stdcall SourceReaderCB::OnReadSample(HRESULT hrStatus, DWORD dwStreamIndex, DWORD dwStreamFlags, LONGLONG llTimestamp, IMFSample* pSample)
+
+//from IMFSourceReaderCallback
+STDMETHODIMP PlatformStreamMF::OnReadSample(HRESULT hrStatus, DWORD dwStreamIndex,
+	DWORD dwStreamFlags, LONGLONG llTimestamp,
+	IMFSample* pSample)
 {
-	//CV_UNUSED(llTimestamp);
+	std::unique_lock<std::mutex> locker(m_mutex);
 
-	HRESULT hr = 0;
-
-	if (SUCCEEDED(hrStatus))
-	{
-		m_stream->OnIncomingCapturedData(pSample);
-	}
-	else
-	{
-		LOG(LOG_WARNING, "SourceReaderCB: OnReadSample() is called with error status: \n");
+	if (FAILED(hrStatus)) {
+		//emit streamingError(int(hrStatus));
+		return hrStatus;
 	}
 
-	if (MF_SOURCE_READERF_ENDOFSTREAM & dwStreamFlags)
-	{
-		// Reached the end of the stream.
-		//m_bCapture = false;
+	if (dwStreamFlags & MF_SOURCE_READERF_ENDOFSTREAM) {
+		m_streaming = false;
+		//emit streamingStopped();
+	}
+	else {
+
+		if (!m_streaming) {
+			m_streaming = true;
+			//emit streamingStarted();
+		}
+		if (pSample)
+		{
+			m_bufferMutex.lock();
+			m_transform.DoTransform(pSample, m_frameBuffer);
+			m_frames++;
+			m_newFrame = true;
+			m_bufferMutex.unlock();
+		}
+
+		if (m_sourceReader)
+			m_sourceReader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, NULL, NULL, NULL, NULL);
 	}
 
 	return S_OK;
 }
 
-HRESULT __stdcall SourceReaderCB::OnFlush(DWORD stream_index)
+STDMETHODIMP PlatformStreamMF::OnFlush(DWORD)
 {
-	if (m_hEvent != INVALID_HANDLE_VALUE) {
-		SetEvent(m_hEvent);
-		m_hEvent = INVALID_HANDLE_VALUE;
-	}
-
 	return S_OK;
 }
 
+STDMETHODIMP PlatformStreamMF::OnEvent(DWORD, IMFMediaEvent*)
+{
+	return S_OK;
+}
 
+HRESULT PlatformStreamMF::prepareVideoStream(DWORD mediaTypeIndex)
+{
+	if (!m_sourceReader || !m_videoSource)
+		return E_FAIL;
 
-MFTColorSpaceTransform::MFTColorSpaceTransform()
+	HRESULT hr = S_OK;
+
+	if (mediaTypeIndex == MEDIA_TYPE_INDEX_DEFAULT) {
+		hr = m_sourceReader->GetCurrentMediaType(DWORD(MF_SOURCE_READER_FIRST_VIDEO_STREAM),
+			&m_videoMediaType);
+	}
+	else {
+		hr = m_sourceReader->GetNativeMediaType(DWORD(MF_SOURCE_READER_FIRST_VIDEO_STREAM),
+			mediaTypeIndex, &m_videoMediaType);
+		if (SUCCEEDED(hr))
+			hr = m_sourceReader->SetCurrentMediaType(DWORD(MF_SOURCE_READER_FIRST_VIDEO_STREAM),
+				nullptr, m_videoMediaType);
+	}
+
+	if (SUCCEEDED(hr)) {
+
+		hr = MFGetAttributeSize(m_videoMediaType, MF_MT_FRAME_SIZE, &m_width, &m_height);
+
+		if (SUCCEEDED(hr)) {
+
+			ComPtr<IMFMediaType> convertedType;
+			hr = MFCreateMediaType(convertedType.GetAddressOf());
+			if (SUCCEEDED(hr))
+			{
+				MFSetAttributeSize(convertedType.Get(), MF_MT_FRAME_SIZE, m_width, m_height);
+				convertedType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+				convertedType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB24);
+
+				if (m_transform.IsCompressedMediaType(m_videoMediaType))
+				{
+					ComPtr<IMFMediaType> decodedType;
+					if (m_transform.InitVideoDecoder(m_videoMediaType, decodedType.GetAddressOf())) {
+						m_transform.InitVideoProcessor(decodedType.Get(), convertedType.Get());
+					}
+				}
+				else
+					m_transform.InitVideoProcessor(m_videoMediaType, convertedType.Get());
+			}
+		}
+	}
+
+	return hr;
+
+}
+
+DWORD PlatformStreamMF::findMediaTypeIndex(int32_t reqWidth, uint32_t reqHeight, uint32_t reqFourCC, uint32_t reqFrameRate)
+{
+	DWORD mediaIndex = MEDIA_TYPE_INDEX_DEFAULT;
+
+	if (m_sourceReader && m_videoSource) {
+
+		DWORD index = 0;
+		IMFMediaType* mediaType = nullptr;
+
+		UINT32 currArea = 0;
+		float currFrameRate = 0.0f;
+
+		while (SUCCEEDED(m_sourceReader->GetNativeMediaType(DWORD(MF_SOURCE_READER_FIRST_VIDEO_STREAM),
+			index, &mediaType))) {
+
+			GUID subtype = GUID_NULL;
+			if (SUCCEEDED(mediaType->GetGUID(MF_MT_SUBTYPE, &subtype))) {
+
+				UINT32 width, height;
+				if (SUCCEEDED(MFGetAttributeSize(mediaType, MF_MT_FRAME_SIZE, &width, &height))) {
+
+					UINT32 num, den;
+					if (SUCCEEDED(MFGetAttributeRatio(mediaType, MF_MT_FRAME_RATE, &num, &den))) {
+
+						UINT32 area = width * height;
+						float frameRate = float(num) / den;
+
+						if (reqWidth == width
+							&& reqHeight == height
+							&& qFuzzyCompare((float)reqFrameRate, frameRate)
+							&& reqFourCC == subtype.Data1) {
+							mediaType->Release();
+							return index;
+						}
+
+						if ((currFrameRate < 29.9 && currFrameRate < frameRate) ||
+							(currFrameRate == frameRate && currArea < area)) {
+							currArea = area;
+							currFrameRate = frameRate;
+							mediaIndex = index;
+						}
+					}
+				}
+
+			}
+			mediaType->Release();
+			++index;
+		}
+	}
+
+	return mediaIndex;
+}
+
+MFTColorSpaceTransform::MFTColorSpaceTransform() :
+	m_videoProcessor(nullptr),
+	m_videoDecoder(nullptr)
 {
 }
 
 MFTColorSpaceTransform::~MFTColorSpaceTransform()
 {
+	if (m_videoDecoder) {
+		m_videoDecoder->Release();
+		m_videoDecoder = nullptr;
+	}
+
+	if (m_videoProcessor) {
+		m_videoProcessor->Release();
+		m_videoProcessor = nullptr;
+	}
 }
 
 static std::string wcharPtrToString(const wchar_t* sstr)
@@ -934,7 +813,7 @@ static std::string wcharPtrToString(const wchar_t* sstr)
 	return std::string(&buffer[0]);
 }
 
-bool MFTColorSpaceTransform::InitColorSpaceTransform(IMFMediaType* pInputType, IMFMediaType* pOutputType)
+bool MFTColorSpaceTransform::InitVideoProcessor(IMFMediaType* pInputType, IMFMediaType* pOutputType)
 {
 	IMFActivate** ppActivates = nullptr;
 	UINT32 numActivate = 0; // will be 1
@@ -981,7 +860,7 @@ bool MFTColorSpaceTransform::InitColorSpaceTransform(IMFMediaType* pInputType, I
 		CoTaskMemFree(ppszName);
 	}
 
-	hr = ppActivates[0]->ActivateObject(__uuidof(IMFTransform), (void**)&m_pMFTProcessor);
+	hr = ppActivates[0]->ActivateObject(IID_PPV_ARGS(&m_videoProcessor));
 
 	for (UINT32 i = 0; i < numActivate; ++i)
 		ppActivates[i]->Release();
@@ -993,16 +872,8 @@ bool MFTColorSpaceTransform::InitColorSpaceTransform(IMFMediaType* pInputType, I
 		return false;
 	}
 
-	ComPtr<IMFAttributes> pAttributes;
-	m_pMFTProcessor->GetAttributes(&pAttributes);
 
-	UINT32 attrValue = 0;
-	if (SUCCEEDED(pAttributes->GetUINT32(MF_SA_D3D11_AWARE, &attrValue)))
-	{
-		LOG(LOG_DEBUG, "GPU-accelerated video processing supported\n");
-	}
-
-	hr = m_pMFTProcessor->SetInputType(0, pInputType, 0);
+	hr = m_videoProcessor->SetInputType(0, pInputType, 0);
 	if (FAILED(hr))
 	{
 		LOG(LOG_ERR, "MFTTransform SetInputType failed (HRESULT = %08X)!\n", hr);
@@ -1013,30 +884,48 @@ bool MFTColorSpaceTransform::InitColorSpaceTransform(IMFMediaType* pInputType, I
 	LOG(LOG_DEBUG, "# Colorspace Transform support output format\n");
 	while (SUCCEEDED(hr))
 	{
-		ComPtr<IMFMediaType> pAvailableType;
-		hr = m_pMFTProcessor->GetOutputAvailableType(0, dwTypeIndex++, &pAvailableType);
-		MediaType type(pAvailableType.Get());
+		IMFMediaType* availableType = nullptr;
+		hr = m_videoProcessor->GetOutputAvailableType(0, dwTypeIndex++, &availableType);
 
-		if (SUCCEEDED(hr))
+		if (SUCCEEDED(hr) && availableType)
 		{
 			GUID guidType;
-			pAvailableType->GetGUID(MF_MT_SUBTYPE, &guidType);
-			LOG(LOG_DEBUG, "   %s\n", fourCCToStringWin(guidType.Data1).c_str());
+			availableType->GetGUID(MF_MT_SUBTYPE, &guidType);
+			LOG(LOG_DEBUG, "   %s\n", fourCCToStringMF(guidType.Data1).c_str());
 		}
+
+		if (availableType)
+			availableType->Release();
 	}
 
-	hr = m_pMFTProcessor->SetOutputType(0, pOutputType, 0);
+	hr = m_videoProcessor->SetOutputType(0, pOutputType, 0);
 	if (FAILED(hr))
 	{
 		LOG(LOG_ERR, "MFTTransform SetOutputType failed (HRESULT = %08X)!\n", hr);
 		return false;
 	}
 
+	/*hr = m_videoProcessor->GetOutputCurrentType(0, outputType.GetAddressOf());
+	if (FAILED(hr))
+		return false;
+
+	hr = MFCreateMediaBufferFromMediaType(outputType.Get(), 0, 0, 0, outMediaBuffer.GetAddressOf());
+	if (FAILED(hr))
+		return false;
+
+	hr = MFCreateSample(outSample.GetAddressOf());
+	if (FAILED(hr))
+		return false;
+
+	hr = outSample->AddBuffer(outMediaBuffer.Get());
+	if (FAILED(hr))
+		return false;*/
+
 	return true;
 }
 
 
-bool MFTColorSpaceTransform::InitDecoder(IMFMediaType* pInputType, ComPtr<IMFMediaType>& pOutputType)
+bool MFTColorSpaceTransform::InitVideoDecoder(IMFMediaType* pInputType, IMFMediaType** pOutputType)
 {
 	IMFActivate** ppActivates = nullptr;
 	UINT32 numActivate = 0; // will be 1
@@ -1078,7 +967,7 @@ bool MFTColorSpaceTransform::InitDecoder(IMFMediaType* pInputType, ComPtr<IMFMed
 		CoTaskMemFree(ppszName);
 	}
 
-	hr = ppActivates[0]->ActivateObject(__uuidof(IMFTransform), (void**)&m_pMFTDecoder);
+	hr = ppActivates[0]->ActivateObject(IID_PPV_ARGS(&m_videoDecoder));
 
 	for (UINT32 i = 0; i < numActivate; ++i)
 		ppActivates[i]->Release();
@@ -1090,16 +979,19 @@ bool MFTColorSpaceTransform::InitDecoder(IMFMediaType* pInputType, ComPtr<IMFMed
 		return false;
 	}
 
-	ComPtr<IMFAttributes> pAttributes;
-	m_pMFTDecoder->GetAttributes(&pAttributes);
+	IMFAttributes* decoderAttributes = nullptr;
+	m_videoDecoder->GetAttributes(&decoderAttributes);
 
 	UINT32 attrValue = 0;
-	if (SUCCEEDED(pAttributes->GetUINT32(MF_SA_D3D11_AWARE, &attrValue)))
+	if (SUCCEEDED(decoderAttributes->GetUINT32(MF_SA_D3D11_AWARE, &attrValue)))
 	{
 		LOG(LOG_DEBUG, "GPU-accelerated video decoding supported\n");
 	}
 
-	hr = m_pMFTDecoder->SetInputType(0, pInputType, 0);
+	decoderAttributes->Release();
+	decoderAttributes = nullptr;
+
+	hr = m_videoDecoder->SetInputType(0, pInputType, 0);
 	if (FAILED(hr))
 	{
 		LOG(LOG_ERR, "MFTTransform SetInputType failed (HRESULT = %08X)!\n", hr);
@@ -1110,25 +1002,27 @@ bool MFTColorSpaceTransform::InitDecoder(IMFMediaType* pInputType, ComPtr<IMFMed
 	LOG(LOG_DEBUG, "# Decoder support output format\n");
 	while (SUCCEEDED(hr))
 	{
-		ComPtr<IMFMediaType> pAvailableType;
-		hr = m_pMFTDecoder->GetOutputAvailableType(0, dwTypeIndex++, &pAvailableType);
-		MediaType type(pAvailableType.Get());
+		IMFMediaType* availableType = nullptr;
+		hr = m_videoDecoder->GetOutputAvailableType(0, dwTypeIndex++, &availableType);
 
-		if (SUCCEEDED(hr))
+		if (SUCCEEDED(hr) && availableType)
 		{
 			GUID guidType;
-			pAvailableType->GetGUID(MF_MT_SUBTYPE, &guidType);
-			LOG(LOG_DEBUG, "   %s\n", fourCCToStringWin(guidType.Data1).c_str());
+			availableType->GetGUID(MF_MT_SUBTYPE, &guidType);
+			LOG(LOG_DEBUG, "   %s\n", fourCCToStringMF(guidType.Data1).c_str());
 		}
+
+		if (availableType)
+			availableType->Release();
 	}
 
 	if (dwTypeIndex > 1)
-		hr = m_pMFTDecoder->GetOutputAvailableType(0, 0, &pOutputType);
+		hr = m_videoDecoder->GetOutputAvailableType(0, 0, pOutputType);
 	else
 		return false;
 
 
-	hr = m_pMFTDecoder->SetOutputType(0, pOutputType.Get(), 0);
+	hr = m_videoDecoder->SetOutputType(0, *pOutputType, 0);
 	if (FAILED(hr))
 	{
 		LOG(LOG_ERR, "MFTTransform SetOutputType failed (HRESULT = %08X)!\n", hr);
@@ -1189,62 +1083,68 @@ HRESULT MFTColorSpaceTransform::DoTransform(IMFSample* pSample, std::vector<BYTE
 	HRESULT hr = S_OK;
 	DWORD status = 0;
 
-	ComPtr<IMFSample> pUnconprseedSample;
-	ComPtr<IMFMediaBuffer> pUnconprseedBuffer;
-	if (m_pMFTDecoder)
+	ComPtr<IMFSample> decodedSample;
+	ComPtr<IMFMediaBuffer> decodedBuffer;
+
+	if (m_videoDecoder)
 	{
 		ComPtr<IMFMediaType> outputType;
-		hr = m_pMFTDecoder->GetOutputCurrentType(0, &outputType); if (FAILED(hr)) return hr;
-		hr = MFCreateMediaBufferFromMediaType(outputType.Get(), 0, 0, 0, &pUnconprseedBuffer); if (FAILED(hr)) return hr;
-		hr = MFCreateSample(&pUnconprseedSample); if (FAILED(hr)) return hr;
-		hr = pUnconprseedSample->AddBuffer(pUnconprseedBuffer.Get()); if (FAILED(hr)) return hr;
+		hr = m_videoDecoder->GetOutputCurrentType(0, outputType.GetAddressOf()); if (FAILED(hr)) return hr;
+		hr = MFCreateMediaBufferFromMediaType(outputType.Get(), 0, 0, 0, &decodedBuffer); if (FAILED(hr)) return hr;
+		hr = MFCreateSample(decodedSample.GetAddressOf()); if (FAILED(hr)) return hr;
+		hr = decodedSample->AddBuffer(decodedBuffer.Get()); if (FAILED(hr)) return hr;
 
-		MFT_OUTPUT_DATA_BUFFER data_buffer = { 0, pUnconprseedSample.Get(), 0, nullptr };
+		MFT_OUTPUT_DATA_BUFFER data_buffer = { 0, decodedSample.Get(), 0, nullptr };
 
 		do
 		{
-			hr = m_pMFTDecoder->ProcessInput(0, pSample, 0);
+			hr = m_videoDecoder->ProcessInput(0, pSample, 0);
 			if (FAILED(hr))
 				return hr;
 
-			hr = m_pMFTDecoder->ProcessOutput(0, 1, &data_buffer, &status);
+			hr = m_videoDecoder->ProcessOutput(0, 1, &data_buffer, &status);
 			if (FAILED(hr) && hr != MF_E_TRANSFORM_NEED_MORE_INPUT)
 				return hr;
 
 		} while (hr == MF_E_TRANSFORM_NEED_MORE_INPUT);
 
-		pSample = pUnconprseedSample.Get();
+		pSample = decodedSample.Get();
 	}
 
 
 	ComPtr<IMFMediaType> outputType;
-	ComPtr<IMFMediaBuffer> mediaBuffer;
+	ComPtr<IMFMediaBuffer> outMediaBuffer;
 	ComPtr<IMFSample> outSample;
-	ComPtr<IMF2DBuffer> buf2d;
 
-	hr = m_pMFTProcessor->GetOutputCurrentType(0, &outputType); if (FAILED(hr)) return hr;
-	hr = MFCreateMediaBufferFromMediaType(outputType.Get(), 0, 0, 0, &mediaBuffer); if (FAILED(hr)) return hr;
-	hr = MFCreateSample(&outSample); if (FAILED(hr)) return hr;
-	hr = outSample->AddBuffer(mediaBuffer.Get()); if (FAILED(hr)) return hr;
+	hr = m_videoProcessor->GetOutputCurrentType(0, outputType.GetAddressOf()); if (FAILED(hr))return hr;
+
+	hr = MFCreateMediaBufferFromMediaType(outputType.Get(), 0, 0, 0, outMediaBuffer.GetAddressOf()); if (FAILED(hr))return hr;
+
+	hr = MFCreateSample(outSample.GetAddressOf()); if (FAILED(hr))return hr;
+
+	hr = outSample->AddBuffer(outMediaBuffer.Get()); if (FAILED(hr))return hr;
+
 
 	MFT_OUTPUT_DATA_BUFFER rgb24Buffer = { 0, outSample.Get(), 0, nullptr };
 
-	hr = m_pMFTProcessor->ProcessInput(0, pSample, 0); if (FAILED(hr)) return hr;
-	hr = m_pMFTProcessor->GetOutputStatus(&status); if (FAILED(hr)) return hr;
+	hr = m_videoProcessor->ProcessInput(0, pSample, 0);
+	if (SUCCEEDED(hr)) {
 
-	if (status & MFT_OUTPUT_STATUS_SAMPLE_READY) {
+		hr = m_videoProcessor->GetOutputStatus(&status);
 
-		hr = m_pMFTProcessor->ProcessOutput(0, 1, &rgb24Buffer, &status); if (FAILED(hr)) return hr;
+		if (SUCCEEDED(hr) && status & MFT_OUTPUT_STATUS_SAMPLE_READY) {
 
-		hr = mediaBuffer->QueryInterface(__uuidof(IMF2DBuffer), (void**)&buf2d);
+			hr = m_videoProcessor->ProcessOutput(0, 1, &rgb24Buffer, &status); if (FAILED(hr))return hr;
 
-		if (SUCCEEDED(hr))
-		{
-			DWORD cbLengh = 0;
-			buf2d->GetContiguousLength(&cbLengh);
-			outBuffer.resize(cbLengh);
-			buf2d->ContiguousCopyTo(outBuffer.data(), (DWORD)outBuffer.size());
-			buf2d->Release();
+			BYTE* pbBuffer = nullptr;
+			DWORD cbMaxLengh = 0, cbCurrentLenth = 0;
+
+			if (SUCCEEDED(outMediaBuffer->Lock(&pbBuffer, &cbMaxLengh, &cbCurrentLenth)))
+			{
+				outBuffer.resize(cbCurrentLenth);
+				memcpy(outBuffer.data(), pbBuffer, cbCurrentLenth);
+				outMediaBuffer->Unlock();
+			}
 		}
 	}
 

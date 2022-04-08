@@ -35,8 +35,6 @@
 #include <map>
 #include <stdint.h>
 
-#pragma comment(lib, "strmiids")
-
 #include "openpnp-capture.h"
 
 #include "platformdeviceinfo.h"
@@ -59,10 +57,6 @@ public:
     virtual ~PlatformContextMF();
 
 protected:
-
-    /** retrieve all the frame information and write it to the platformDeviceInfo object */
-    bool enumerateFrameInfo(IMoniker *moniker, platformDeviceInfo *info);
-
     /** Enumerate DirectShow capture devices and put their 
         information into the m_devices array 
         

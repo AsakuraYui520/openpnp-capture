@@ -194,8 +194,8 @@ int main(int argc, char*argv[])
             Cap_getFormatInfo(ctx, i, j, &finfo);
             fourccString = FourCCToString(finfo.fourcc);
 
-            printf("  Format ID %d: %d x %d %d fps pixels  FOURCC=%s\n",
-                j, finfo.width, finfo.height, finfo.fps, fourccString.c_str());
+            printf("  Format ID %d: %d x %d pixels  FOURCC=%s\n",
+                j, finfo.width, finfo.height, fourccString.c_str());
         }
     }
 

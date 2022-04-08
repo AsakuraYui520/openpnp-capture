@@ -27,8 +27,8 @@
 */
 
 #include "platformdeviceinfo.h"
-#include "platformstreamds.h"
-#include "platformcontextds.h"
+#include "platformstream.h"
+#include "platformcontext.h"
 #include "scopedcomptr.h"
 
 #include <cmath>
