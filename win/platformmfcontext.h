@@ -43,7 +43,7 @@
 /** context base class keeps track of all the platform independent
     objects and information */
 
-class PlatformContextMF : public Context
+class PlatformMFContext : public Context
 {
 public:
     /** Create a context for the library.
@@ -53,8 +53,8 @@ public:
 
         Re-enumeration support is pending.
     */
-    PlatformContextMF();
-    virtual ~PlatformContextMF();
+    PlatformMFContext();
+    virtual ~PlatformMFContext();
 
 protected:
     /** Enumerate DirectShow capture devices and put their 
@@ -64,21 +64,6 @@ protected:
         derived class.
     */
     virtual bool enumerateDevices();
-
-    /** Convert a wide character string to an UTF-8 string 
-        
-        Implement this function in a platform-dependent
-        derived class.    
-    */
-    virtual std::string wstringToString(const std::wstring &wstr);
-
-    /** Convert a wide charater string to an UTF-8 string
-        
-        Implement this function in a platform-dependent
-        derived class.    
-    */
-    virtual std::string wcharPtrToString(const wchar_t *str);
-
 };
 
 #endif

@@ -50,7 +50,6 @@
 #include <mutex>
 #include "../common/logging.h"
 #include "../common/stream.h"
-#include "scopedcomptr.h"
 
 template <class T>
 using ComPtr = Microsoft::WRL::ComPtr<T>;
@@ -81,11 +80,11 @@ private:
 
 
 /** The stream class handles the capturing of a single device */
-class PlatformStreamMF : public Stream, public IMFSourceReaderCallback
+class PlatformMFStream : public Stream, public IMFSourceReaderCallback
 {
 public:
-	PlatformStreamMF();
-	virtual ~PlatformStreamMF();
+	PlatformMFStream();
+	virtual ~PlatformMFStream();
 
 
 	/** Open a capture stream to a device and request a specific (internal) stream format.

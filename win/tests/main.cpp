@@ -146,7 +146,7 @@ void estimateFrameRate(CapContext ctx, int32_t streamID)
 
 int main(int argc, char*argv[])
 {    
-    uint32_t deviceFormatID = 0;
+    uint32_t deviceFormatID = 1;
     uint32_t deviceID       = 0;
 
     Cap_installCustomLogFunction(myCustomLogFunction);

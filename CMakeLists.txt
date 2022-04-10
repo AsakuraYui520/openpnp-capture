@@ -87,8 +87,8 @@ IF (WIN32)
     
     # add files for Media Foundation
     if (USE_MEDIA_FOUNDATION)
-    target_sources(openpnp-capture PRIVATE win/platformcontextmf.cpp
-                                           win/platformstreammf.cpp)
+    target_sources(openpnp-capture PRIVATE win/platformmfcontext.cpp
+                                           win/platformmfstream.cpp)
     target_link_libraries(openpnp-capture mfplat mf mfuuid Mfreadwrite shlwapi)                                       
     # add files for DirectShow 
     else()

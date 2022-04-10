@@ -33,18 +33,21 @@
 #include <stdio.h>
 
 #include "../common/logging.h"
-#include "platformstreammf.h"
-#include "platformcontextmf.h"
+#include "platformmfstream.h"
+#include "platformmfcontext.h"
 
+std::wstring getIMFAttributesString(IMFAttributes* pAttributes, REFGUID guidKey);
+std::string wstringToString(const std::wstring& wstr);
+std::string wcharPtrToString(const wchar_t* sstr);
 
 // a platform factory function needed by
 // libmain.cpp
 Context* createPlatformContext()
 {
-	return new PlatformContextMF();
+	return new PlatformMFContext();
 }
 
-PlatformContextMF::PlatformContextMF() : Context()
+PlatformMFContext::PlatformMFContext() : Context()
 {
 	HRESULT hr;
 	hr = CoInitializeEx(NULL, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
@@ -69,13 +72,15 @@ PlatformContextMF::PlatformContextMF() : Context()
 	enumerateDevices();
 }
 
-PlatformContextMF::~PlatformContextMF()
+PlatformMFContext::~PlatformMFContext()
 {
+	MFShutdown();
+
 	CoUninitialize();
 }
 
 
-bool PlatformContextMF::enumerateDevices()
+bool PlatformMFContext::enumerateDevices()
 {
 	HRESULT hr = S_OK;
 	ComPtr<IMFAttributes> pAttributes;
@@ -100,29 +105,9 @@ bool PlatformContextMF::enumerateDevices()
 	{
 		platformDeviceInfo* info = new platformDeviceInfo();
 
-		WCHAR* deviceName = NULL;
-		UINT32 deviceNameLength = 0;
-		UINT32 deviceIdLength = 0;
-		WCHAR* deviceId = NULL;
-
-		hr = ppDevices[index]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME,
-			&deviceName, &deviceNameLength);
-
-		if (SUCCEEDED(hr))
-			info->m_name = wstringToString(deviceName);
-
-		CoTaskMemFree(deviceName);
-
-		hr = ppDevices[index]->GetAllocatedString(
-			MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK, &deviceId,
-			&deviceIdLength);
-		if (SUCCEEDED(hr))
-		{
-			info->m_uniqueID = wstringToString(deviceId);
-			info->m_devicePath = deviceId;
-		}
-
-		CoTaskMemFree(deviceId);
+		info->m_devicePath = getIMFAttributesString(ppDevices[index], MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK);
+		info->m_name = wstringToString(getIMFAttributesString(ppDevices[index], MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME));
+		info->m_uniqueID = wstringToString(info->m_devicePath);
 
 
 		LOG(LOG_INFO, "ID %d -> %s\n", index, info->m_name.c_str());
@@ -174,7 +159,7 @@ bool PlatformContextMF::enumerateDevices()
 			info->m_formats.push_back(frameInfo);
 
 			LOG(LOG_VERBOSE, "    Format ID[%d] %d x %d  %d fps FOURCC=%s\n",
-				dwMediaTypeIndex - 1, frameInfo.width, frameInfo.height, 
+				dwMediaTypeIndex - 1, frameInfo.width, frameInfo.height,
 				frameInfo.fps, fourCCToString(frameInfo.fourcc).c_str());
 		}
 
@@ -193,12 +178,12 @@ bool PlatformContextMF::enumerateDevices()
 }
 
 
-std::string PlatformContextMF::wstringToString(const std::wstring& wstr)
+std::string wstringToString(const std::wstring& wstr)
 {
 	return wcharPtrToString(wstr.c_str());
 }
 
-std::string PlatformContextMF::wcharPtrToString(const wchar_t* sstr)
+std::string wcharPtrToString(const wchar_t* sstr)
 {
 	std::vector<char> buffer;
 	int32_t chars = WideCharToMultiByte(CP_UTF8, 0, sstr, -1, nullptr, 0, nullptr, nullptr);
@@ -207,6 +192,37 @@ std::string PlatformContextMF::wcharPtrToString(const wchar_t* sstr)
 	buffer.resize(chars);
 	WideCharToMultiByte(CP_UTF8, 0, sstr, -1, &buffer[0], chars, nullptr, nullptr);
 	return std::string(&buffer[0]);
+}
+
+std::wstring getIMFAttributesString(IMFAttributes* pAttributes, REFGUID guidKey)
+{
+	WCHAR* pszName = nullptr;
+	UINT32 cchLengh = 0;
+
+	HRESULT hr = pAttributes->GetAllocatedString(guidKey, &pszName, &cchLengh);
+
+	std::wstring str;
+	if (pszName)
+		str = pszName;
+
+	CoTaskMemFree(pszName);
+
+	return str;
+}
+
+std::vector<UINT8> getIMFAttributesBlob(IMFAttributes* pAttributes, REFGUID guidKey)
+{
+	UINT32 blobSize = 0;
+	HRESULT hr = pAttributes->GetBlobSize(guidKey, &blobSize);
+
+	if (SUCCEEDED(hr) && blobSize != 0)
+	{
+		std::vector<UINT8> buf(blobSize);
+		hr = pAttributes->GetBlob(guidKey, buf.data(), blobSize, NULL);
+		return buf;
+	}
+
+	return std::vector<UINT8>();
 }
 
 
