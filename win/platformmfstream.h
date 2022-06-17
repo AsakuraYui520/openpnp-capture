@@ -72,6 +72,7 @@ public:
 private:
 	IMFTransform* m_videoProcessor;
 	IMFTransform* m_videoDecoder;
+	UINT32 m_width, m_height;
 
 	//ComPtr<IMFMediaType> outputType;
 	//ComPtr<IMFMediaBuffer> outMediaBuffer;
@@ -130,7 +131,6 @@ public:
 protected:
 	/** get DirectShow property + flags helper function */
 	bool getDSProperty(uint32_t propID, long& value, long& flags);
-
 	void stopStreaming();
 
 	void dumpCameraProperties();

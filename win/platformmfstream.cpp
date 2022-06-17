@@ -29,7 +29,13 @@
 #include "platformdeviceinfo.h"
 #include "platformmfstream.h"
 #include "platformmfcontext.h"
+#include <cmath>
 
+
+#ifdef min
+#undef min
+#undef max
+#endif
 enum { MEDIA_TYPE_INDEX_DEFAULT = 0xffffffff };
 
 /** convert a FOURCC uint32_t to human readable form */
@@ -53,12 +59,12 @@ static std::string fourCCToStringMF(uint32_t fourcc)
 
 static inline  bool qFuzzyCompare(double p1, double p2)
 {
-	return (abs(p1 - p2) * 1000000000000. <= min(abs(p1), abs(p2)));
+	return (abs(p1 - p2) * 1000000000000. <= std::min(abs(p1), abs(p2)));
 }
 
 static inline  bool qFuzzyCompare(float p1, float p2)
 {
-	return (abs(p1 - p2) * 100000.f <= min(abs(p1), abs(p2)));
+	return (abs(p1 - p2) * 100000.f <= std::min(abs(p1), abs(p2)));
 }
 
 extern std::wstring getIMFAttributesString(IMFAttributes* pAttributes, REFGUID guidKey);
@@ -247,17 +253,17 @@ void PlatformMFStream::dumpCameraProperties()
 {
 	LOG(LOG_DEBUG, "------------Camera Properties:------------\n");
 
-	if (m_camControl != 0)
+	if (m_camControl != nullptr)
 	{
 		//query exposure
 		long flags, mmin, mmax, delta, defaultValue;
 		if (m_camControl->GetRange(CameraControl_Exposure, &mmin, &mmax,
 			&delta, &defaultValue, &flags) == S_OK)
 		{
-			LOG(LOG_DEBUG, "Exposure min     : %2.3f seconds (%d integer)\n", pow(2.0f, (float)mmin), mmin);
-			LOG(LOG_DEBUG, "Exposure max     : %2.3f seconds (%d integer)\n", pow(2.0f, (float)mmax), mmax);
+			LOG(LOG_DEBUG, "Exposure min     : %2.3f seconds (%d integer)\n", std::pow(2.0f, (float)mmin), mmin);
+			LOG(LOG_DEBUG, "Exposure max     : %2.3f seconds (%d integer)\n", std::pow(2.0f, (float)mmax), mmax);
 			LOG(LOG_DEBUG, "Exposure step    : %d (integer)\n", delta);
-			LOG(LOG_DEBUG, "Exposure default : %2.3f seconds\n", pow(2.0f, (float)defaultValue));
+			LOG(LOG_DEBUG, "Exposure default : %2.3f seconds\n", std::pow(2.0f, (float)defaultValue));
 			LOG(LOG_DEBUG, "Flags            : %08X\n", flags);
 		}
 		else
@@ -888,6 +894,9 @@ bool MFTColorSpaceTransform::InitVideoProcessor(IMFMediaType* pInputType, IMFMed
 		return false;
 	}
 
+
+	MFGetAttributeSize(pOutputType, MF_MT_FRAME_SIZE, &m_width, &m_height);
+
 	/*hr = m_videoProcessor->GetOutputCurrentType(0, outputType.GetAddressOf());
 	if (FAILED(hr))
 		return false;
@@ -908,7 +917,7 @@ bool MFTColorSpaceTransform::InitVideoProcessor(IMFMediaType* pInputType, IMFMed
 }
 
 
-bool MFTColorSpaceTransform::InitVideoDecoder(IMFMediaType* pInputType, IMFMediaType** pOutputType)
+bool MFTColorSpaceTransform::InitVideoDecoder(IMFMediaType* pInputType, IMFMediaType** ppOutputType)
 {
 	IMFActivate** ppActivates = nullptr;
 	UINT32 numActivate = 0; // will be 1
@@ -973,7 +982,7 @@ bool MFTColorSpaceTransform::InitVideoDecoder(IMFMediaType* pInputType, IMFMedia
 	LOG(LOG_DEBUG, "# Decoder support output format\n");
 	while (SUCCEEDED(hr))
 	{
-		ComPtr<IMFMediaType> availableType ;
+		ComPtr<IMFMediaType> availableType;
 		hr = m_videoDecoder->GetOutputAvailableType(0, dwTypeIndex++, availableType.GetAddressOf());
 
 		if (SUCCEEDED(hr) && availableType)
@@ -985,12 +994,12 @@ bool MFTColorSpaceTransform::InitVideoDecoder(IMFMediaType* pInputType, IMFMedia
 	}
 
 	if (dwTypeIndex > 1)
-		hr = m_videoDecoder->GetOutputAvailableType(0, 0, pOutputType);
+		hr = m_videoDecoder->GetOutputAvailableType(0, 0, ppOutputType);
 	else
 		return false;
 
 
-	hr = m_videoDecoder->SetOutputType(0, *pOutputType, 0);
+	hr = m_videoDecoder->SetOutputType(0, *ppOutputType, 0);
 	if (FAILED(hr))
 	{
 		LOG(LOG_ERR, "MFTTransform SetOutputType failed (HRESULT = %08X)!\n", hr);
@@ -1032,7 +1041,6 @@ bool MFTColorSpaceTransform::IsCompressedMediaType(IMFMediaType* inputType)
 		MFVideoFormat_HEVC_ES,
 		MFVideoFormat_VP80,
 		MFVideoFormat_VP90,
-		MFVideoFormat_H263,
 		MFVideoFormat_VP10,
 		MFVideoFormat_AV1,
 	};
@@ -1051,69 +1059,60 @@ HRESULT MFTColorSpaceTransform::DoTransform(IMFSample* pSample, std::vector<BYTE
 	HRESULT hr = S_OK;
 	DWORD dwStatus = 0;
 
-	ComPtr<IMFSample> bitmapSample;
+	ComPtr<IMFSample> uncompressedSample;
 
 	if (m_videoDecoder)
 	{
-		ComPtr<IMFMediaType> outputType;
-		hr = m_videoDecoder->GetOutputCurrentType(0, outputType.GetAddressOf());
+		MFT_OUTPUT_STREAM_INFO streamInfo = { 0 };
+		hr = m_videoDecoder->GetOutputStreamInfo(0, &streamInfo);
 		if (FAILED(hr))
 			return hr;
 
-		hr = MFCreateSample(bitmapSample.GetAddressOf());
+		ComPtr<IMFMediaBuffer> uncompressedBuffer;
+
+		hr = MFCreateAlignedMemoryBuffer(streamInfo.cbSize, streamInfo.cbAlignment, uncompressedBuffer.GetAddressOf());
 		if (FAILED(hr))
 			return hr;
+
+		hr = MFCreateSample(uncompressedSample.GetAddressOf());
+		if (FAILED(hr))
+			return hr;
+
+		uncompressedSample->AddBuffer(uncompressedBuffer.Get());
 
 		hr = m_videoDecoder->ProcessInput(0, pSample, 0);
 		if (FAILED(hr))
 			return hr;
 
-		HRESULT hrRes = S_OK;
-		do
+		MFT_OUTPUT_DATA_BUFFER output_data_buffer = { 0, uncompressedSample.Get(), 0, nullptr };
+
+		hr = m_videoDecoder->ProcessOutput(0, 1, &output_data_buffer, &dwStatus);
+
+		if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT)
 		{
-			ComPtr<IMFSample> decodedSample;
-			ComPtr<IMFMediaBuffer> decodedBuffer;
+			return hr;
+		}
+		else if (hr == MF_E_TRANSFORM_STREAM_CHANGE)
+		{
+			//H264 todo
+			return hr;
+		}
+		else if (FAILED(hr))
+			return hr;
 
-			hr = MFCreateMediaBufferFromMediaType(outputType.Get(), 0, 0, 0, decodedBuffer.GetAddressOf());
-			if (FAILED(hr))
-				return hr;
-
-			hr = MFCreateSample(decodedSample.GetAddressOf());
-			if (FAILED(hr))
-				return hr;
-
-			hr = decodedSample->AddBuffer(decodedBuffer.Get());
-			if (FAILED(hr))
-				return hr;
-
-			MFT_OUTPUT_DATA_BUFFER output_data_buffer = { 0, decodedSample.Get(), 0, nullptr };
-
-			hrRes = m_videoDecoder->ProcessOutput(0, 1, &output_data_buffer, &dwStatus);
-
-			if (hrRes == MF_E_TRANSFORM_NEED_MORE_INPUT)
-				break;
-			else if (FAILED(hr))
-				return hr;
-
-			hr = bitmapSample->AddBuffer(decodedBuffer.Get());
-			if (FAILED(hr))
-				return hr;
-
-		} while (1);
-
-		pSample = bitmapSample.Get();
+		pSample = uncompressedSample.Get();
 	}
 
 
-	ComPtr<IMFMediaType> outputType;
 	ComPtr<IMFMediaBuffer> outMediaBuffer;
 	ComPtr<IMFSample> outSample;
 
-	hr = m_videoProcessor->GetOutputCurrentType(0, outputType.GetAddressOf());
+	MFT_OUTPUT_STREAM_INFO streamInfo = { 0 };
+	hr = m_videoProcessor->GetOutputStreamInfo(0, &streamInfo);
 	if (FAILED(hr))
 		return hr;
 
-	hr = MFCreateMediaBufferFromMediaType(outputType.Get(), 0, 0, 0, outMediaBuffer.GetAddressOf());
+	hr = MFCreateAlignedMemoryBuffer(streamInfo.cbSize, streamInfo.cbAlignment, outMediaBuffer.GetAddressOf());
 	if (FAILED(hr))
 		return hr;
 
@@ -1125,32 +1124,41 @@ HRESULT MFTColorSpaceTransform::DoTransform(IMFSample* pSample, std::vector<BYTE
 	if (FAILED(hr))
 		return hr;
 
-
-	MFT_OUTPUT_DATA_BUFFER output_data_buffer = { 0, outSample.Get(), 0, nullptr };
-
 	hr = m_videoProcessor->ProcessInput(0, pSample, 0);
 	if (FAILED(hr))
 		return hr;
 
-	hr = m_videoProcessor->GetOutputStatus(&dwStatus);
+	MFT_OUTPUT_DATA_BUFFER outputSamples = { 0, outSample.Get(), 0, nullptr };
 
-	if (SUCCEEDED(hr) && (dwStatus & MFT_OUTPUT_STATUS_SAMPLE_READY)) {
+	hr = m_videoProcessor->ProcessOutput(0, 1, &outputSamples, &dwStatus);
+	if (FAILED(hr))
+		return hr;
 
-		hr = m_videoProcessor->ProcessOutput(0, 1, &output_data_buffer, &dwStatus);
-		if (FAILED(hr))
-			return hr;
+	BYTE* pbBuffer = nullptr;
+	DWORD cbMaxLengh = 0, cbCurrentLenth = 0;
 
-		BYTE* pbBuffer = nullptr;
-		DWORD cbMaxLengh = 0, cbCurrentLenth = 0;
+	if (SUCCEEDED(outMediaBuffer->Lock(&pbBuffer, &cbMaxLengh, &cbCurrentLenth)))
+	{
+		outBuffer.resize(cbCurrentLenth);
 
-		if (SUCCEEDED(outMediaBuffer->Lock(&pbBuffer, &cbMaxLengh, &cbCurrentLenth)))
+		for (UINT32 y = 0; y < m_height; y++)
 		{
-			outBuffer.resize(cbCurrentLenth);
-			memcpy(outBuffer.data(), pbBuffer, cbCurrentLenth);
-			outMediaBuffer->Unlock();
+			uint8_t* dst = &outBuffer[(y * m_width) * 3];
+			const uint8_t* src = pbBuffer + (m_width * 3) * (m_height - y - 1);
+			for (UINT32 x = 0; x < m_width; x++)
+			{
+				uint8_t b = *src++;
+				uint8_t g = *src++;
+				uint8_t r = *src++;
+				*dst++ = b;
+				*dst++ = g;
+				*dst++ = r;
+			}
 		}
+		outMediaBuffer->Unlock();
 	}
-
 
 	return hr;
 }
+
+

@@ -51,7 +51,7 @@ PlatformMFContext::PlatformMFContext() : Context()
 {
 	HRESULT hr;
 	hr = CoInitializeEx(NULL, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
-	if (hr != S_OK)
+	if (FAILED(hr))
 	{
 		// This might happen when another part of the program
 		// as already called CoInitializeEx.
@@ -64,7 +64,7 @@ PlatformMFContext::PlatformMFContext() : Context()
 	}
 
 	hr = MFStartup(MF_VERSION);
-	if (!SUCCEEDED(hr))
+	if (FAILED(hr))
 	{
 		LOG(LOG_WARNING, "MFStartup failed (HRESULT = %08X)!\n", hr);
 	}
@@ -120,6 +120,7 @@ bool PlatformMFContext::enumerateDevices()
 		if (!SUCCEEDED(hr))
 		{
 			LOG(LOG_DEBUG, "MFCreateSourceReaderFromMediaSource failed (HRESULT = %08X)!\n", hr);
+			delete info;
 			continue;
 		}
 

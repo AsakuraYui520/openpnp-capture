@@ -155,7 +155,7 @@ void PlatformStream::close()
     SafeRelease(&m_sampleGrabber);
     SafeRelease(&m_camControl);
     SafeRelease(&m_nullRenderer);
-    SafeRelease(&m_videoProcAmp);
+    //SafeRelease(&m_videoProcAmp);
 
     if (m_callbackHandler != 0)
     {
