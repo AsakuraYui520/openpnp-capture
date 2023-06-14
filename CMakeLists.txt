@@ -83,7 +83,7 @@ IF (WIN32)
     # remove annoying 'unsafe' function warnings
     add_definitions(-D_CRT_SECURE_NO_WARNINGS)
     
-    option(USE_MEDIA_FOUNDATION "Use Media Foundation API instead DirectShow" FALSE)
+    option(USE_MEDIA_FOUNDATION "Use Media Foundation API instead DirectShow" TRUE)
     
     # add files for Media Foundation
     if (USE_MEDIA_FOUNDATION)
