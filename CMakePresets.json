@@ -1,0 +1,90 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "ninja-msvc-x64",
+            "generator": "Ninja Multi-Config",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "installDir": "${sourceDir}/install/${presetName}",
+            "toolchainFile": "D:/vcpkg/scripts/buildsystems/vcpkg.cmake",
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "cl.exe",
+                "CMAKE_CXX_COMPILER": "cl.exe",
+                "VCPKG_TARGET_TRIPLET": "x64-windows",
+                "VCPKG_INSTALLED_DIR": "${sourceDir}/vcpkg_installed"
+            },
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
+            "environment": {
+                "PKG_CONFIG_PATH": "C:/Qt/ffmpeg-4.4-ucrt/lib/pkgconfig;$penv{PKG_CONFIG_PATH}",
+                "PATH": "$env{HOME}/ninja/bin;$penv{PATH}"
+            },
+            "vendor": {
+                "microsoft.com/VisualStudioSettings/CMake/1.0": {
+                    "hostOS": "Windows",
+                    "intelliSenseMode": "windows-msvc-x64"
+                },
+                "jetbrains.com/clion": {
+                    "toolchain": "Visual Studio 64"
+                }
+            }
+        },
+        {
+            "name": "visual-studio-17-x64",
+            "generator": "Visual Studio 17 2022",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "installDir": "${sourceDir}/install/${presetName}",
+            "toolchainFile": "D:/vcpkg/scripts/buildsystems/vcpkg.cmake",
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "cl.exe",
+                "CMAKE_CXX_COMPILER": "cl.exe",
+                "VCPKG_TARGET_TRIPLET": "x64-windows",
+                "VCPKG_INSTALLED_DIR": "${sourceDir}/vcpkg_installed"
+            },
+            "toolset": "host=x64",
+            "architecture": "x64",
+            "environment": {
+                "PKG_CONFIG_PATH": "C:/Qt/ffmpeg-4.4-ucrt/lib/pkgconfig;$penv{PKG_CONFIG_PATH}",
+                "PATH": "$env{HOME}/ninja/bin;$penv{PATH}"
+            },
+            "vendor": {
+                "microsoft.com/VisualStudioSettings/CMake/1.0": {
+                    "hostOS": "Windows",
+                    "intelliSenseMode": "windows-msvc-x64"
+                }
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "ninja-msvc-x64-debug",
+            "description": "",
+            "displayName": "",
+            "configurePreset": "ninja-msvc-x64",
+            "configuration": "Debug"
+        },
+        {
+            "name": "ninja-msvc-x64-release",
+            "description": "",
+            "displayName": "",
+            "configurePreset": "ninja-msvc-x64",
+            "configuration": "Release"
+        },
+        {
+            "name": "visual-studio-17-x64-debug",
+            "description": "",
+            "displayName": "",
+            "configurePreset": "visual-studio-17-x64",
+            "configuration": "Debug"
+        },
+        {
+            "name": "visual-studio-17-x64-release",
+            "description": "",
+            "displayName": "",
+            "configurePreset": "visual-studio-17-x64",
+            "configuration": "Release"
+        }
+    ]
+}

@@ -325,7 +325,7 @@ bool PlatformMFStream::getPropertyLimits(CapPropertyID propID, int32_t* emin, in
 		return false;
 	}
 
-	if (propID < CAPPROPID_LAST)
+	if (propID < sizeof(gs_properties) / sizeof(property_t))
 	{
 		long flags, mmin, mmax, delta, defaultValue;
 		if (gs_properties[propID].isCameraControl)
@@ -372,7 +372,7 @@ bool PlatformMFStream::setProperty(uint32_t propID, int32_t value)
 	}
 
 
-	if (propID < CAPPROPID_LAST)
+	if (propID < sizeof(gs_properties) / sizeof(property_t))
 	{
 		long flags, dummy;
 		if (gs_properties[propID].isCameraControl)
@@ -494,7 +494,7 @@ bool PlatformMFStream::getDSProperty(uint32_t propID, long& value, long& flags)
 		return false;
 	}
 
-	if (propID < CAPPROPID_LAST)
+	if (propID < sizeof(gs_properties) / sizeof(property_t))
 	{
 		if (gs_properties[propID].isCameraControl)
 		{
@@ -650,6 +650,7 @@ STDMETHODIMP PlatformMFStream::OnReadSample(HRESULT hrStatus, DWORD dwStreamInde
 
 	if (FAILED(hrStatus)) {
 		//emit streamingError(int(hrStatus));
+		LOG(LOG_ERR, "OnReadSample failed:(HRESULT = %08X)\n", hrStatus);
 		return hrStatus;
 	}
 
@@ -666,14 +667,21 @@ STDMETHODIMP PlatformMFStream::OnReadSample(HRESULT hrStatus, DWORD dwStreamInde
 		if (pSample)
 		{
 			m_bufferMutex.lock();
-			m_transform.DoTransform(pSample, m_frameBuffer);
+			HRESULT hr = m_transform.DoTransform(pSample, m_frameBuffer);
 			m_frames++;
 			m_newFrame = true;
 			m_bufferMutex.unlock();
+
+			if (FAILED(hr))
+				LOG(LOG_ERR, "PlatformMFStream::OnReadSample DoTransform failed:(HRESULT = %08X)\n", hr);
 		}
 
 		if (m_sourceReader)
-			m_sourceReader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, NULL, NULL, NULL, NULL);
+		{
+			HRESULT hr = m_sourceReader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, NULL, NULL, NULL, NULL);
+			if (FAILED(hr))
+				LOG(LOG_ERR, "PlatformMFStream::OnReadSample ReadSample failed:(HRESULT = %08X)\n", hr);
+		}
 	}
 
 	return S_OK;
@@ -795,7 +803,9 @@ DWORD PlatformMFStream::findMediaTypeIndex(int32_t reqWidth, uint32_t reqHeight,
 
 MFTColorSpaceTransform::MFTColorSpaceTransform() :
 	m_videoProcessor(nullptr),
-	m_videoDecoder(nullptr)
+	m_videoDecoder(nullptr),
+	m_width(0),
+	m_height(0)
 {
 }
 
@@ -1147,12 +1157,9 @@ HRESULT MFTColorSpaceTransform::DoTransform(IMFSample* pSample, std::vector<BYTE
 			const uint8_t* src = pbBuffer + (m_width * 3) * (m_height - y - 1);
 			for (UINT32 x = 0; x < m_width; x++)
 			{
-				uint8_t b = *src++;
-				uint8_t g = *src++;
-				uint8_t r = *src++;
-				*dst++ = b;
-				*dst++ = g;
-				*dst++ = r;
+				*dst++ = *src++;
+				*dst++ = *src++;
+				*dst++ = *src++;
 			}
 		}
 		outMediaBuffer->Unlock();
