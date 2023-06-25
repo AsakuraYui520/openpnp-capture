@@ -20,4 +20,6 @@ set (SOURCE main.cpp ../../common/logging.cpp)
 
 add_executable(openpnp-capture-test ${SOURCE})
 
+set_target_properties(openpnp-capture-test PROPERTIES RUNTIME_OUTPUT_DIRECTORY ../../)
+
 target_link_libraries(openpnp-capture-test openpnp-capture)

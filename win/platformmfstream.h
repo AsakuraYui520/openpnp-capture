@@ -41,10 +41,7 @@
 #include <mfreadwrite.h>
 #include <mferror.h>
 #include <wrl/client.h>
-
-
 #include <assert.h>
-
 #include <stdint.h>
 #include <vector>
 #include <mutex>
@@ -85,43 +82,43 @@ class PlatformMFStream : public Stream, public IMFSourceReaderCallback
 {
 public:
 	PlatformMFStream();
-	virtual ~PlatformMFStream();
+	~PlatformMFStream() override;
 
 
 	/** Open a capture stream to a device and request a specific (internal) stream format.
-		When succesfully opened, capturing starts immediately.
+		When successfully opened, capturing starts immediately.
 	*/
-	virtual bool open(Context* owner, deviceInfo* device, uint32_t width, uint32_t height,
+	bool open(Context* owner, deviceInfo* device, uint32_t width, uint32_t height,
 		uint32_t fourCC, uint32_t fps) override;
 
 	/** Close a capture stream */
-	virtual void close() override;
+	void close() override;
 
 	/** set the frame rate */
-	virtual bool setFrameRate(uint32_t fps) override;
+	bool setFrameRate(uint32_t fps) override;
 
 	/** Return the FOURCC media type of the stream */
-	virtual uint32_t getFOURCC() override;
+	uint32_t getFOURCC() override;
 
 	/** get the limits of a camera/stream property (exposure, zoom etc) */
-	virtual bool getPropertyLimits(uint32_t propID, int32_t* min, int32_t* max, int32_t* dValue) override;
+	bool getPropertyLimits(uint32_t propID, int32_t* min, int32_t* max, int32_t* dValue) override;
 
 	/** set property (exposure, zoom etc) of camera/stream */
-	virtual bool setProperty(uint32_t propID, int32_t value) override;
+	bool setProperty(uint32_t propID, int32_t value) override;
 
 	/** set automatic state of property (exposure, zoom etc) of camera/stream */
-	virtual bool setAutoProperty(uint32_t propID, bool enabled) override;
+	bool setAutoProperty(uint32_t propID, bool enabled) override;
 
 	/** get property (exposure, zoom etc) of camera/stream */
-	virtual bool getProperty(uint32_t propID, int32_t& outValue) override;
+	bool getProperty(uint32_t propID, int32_t& outValue) override;
 
 	/** get automatic state of property (exposure, zoom etc) of camera/stream */
-	virtual bool getAutoProperty(uint32_t propID, bool& enabled) override;
+	bool getAutoProperty(uint32_t propID, bool& enabled) override;
 
 	//from IUnknown
 	STDMETHODIMP QueryInterface(REFIID riid, LPVOID* ppvObject) override;
-	STDMETHODIMP_(ULONG) AddRef(void) override;
-	STDMETHODIMP_(ULONG) Release(void) override;
+	STDMETHODIMP_(ULONG) AddRef() override;
+	STDMETHODIMP_(ULONG) Release() override;
 
 	//from IMFSourceReaderCallback
 	STDMETHODIMP OnReadSample(HRESULT hrStatus, DWORD dwStreamIndex,

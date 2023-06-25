@@ -62,12 +62,12 @@ const char* Context::getDeviceName(CapDeviceID id) const
     if (id >= m_devices.size())
     {
         LOG(LOG_ERR,"Device with ID %d not found", id);
-        return NULL; // no such device ID!
+        return nullptr; // no such device ID!
     }
     if (m_devices[id] == nullptr)
     {
         LOG(LOG_ERR,"Internal device pointer is NULL");
-        return NULL; // device pointer is NULL!
+        return nullptr; // device pointer is NULL!
     }
     return m_devices[id]->m_name.c_str();
 }
@@ -77,12 +77,12 @@ const char* Context::getDeviceUniqueID(CapDeviceID id) const
     if (id >= m_devices.size())
     {
         LOG(LOG_ERR,"Device with ID %d not found", id);
-        return NULL; // no such device ID!
+        return nullptr; // no such device ID!
     }
     if (m_devices[id] == nullptr)
     {
         LOG(LOG_ERR,"Internal device pointer is NULL");
-        return NULL; // device pointer is NULL!
+        return nullptr; // device pointer is NULL!
     }
     return m_devices[id]->m_uniqueID.c_str();    
 }
@@ -273,7 +273,7 @@ bool Context::setStreamFrameRate(int32_t streamID, uint32_t fps)
     if (streamID < 0)
     {
         LOG(LOG_ERR, "setStreamFrameRate was called with a negative stream ID\n");
-        return 0;
+        return false;
     }    
 
     Stream *stream = m_streams[streamID];
@@ -372,4 +372,4 @@ std::string fourCCToString(uint32_t fourcc)
         fourcc >>= 8;
     }
     return v;
-};
+}

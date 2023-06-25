@@ -33,7 +33,7 @@
 #include <vector>
 #include <string>
 #include <map>
-#include <stdint.h>
+#include <cstdint>
 
 #include "openpnp-capture.h"
 
@@ -54,7 +54,7 @@ public:
         Re-enumeration support is pending.
     */
     PlatformMFContext();
-    virtual ~PlatformMFContext();
+    ~PlatformMFContext() override;
 
 protected:
     /** Enumerate DirectShow capture devices and put their 
@@ -63,7 +63,7 @@ protected:
         Implement this function in a platform-dependent
         derived class.
     */
-    virtual bool enumerateDevices();
+    bool enumerateDevices() override;
 };
 
 #endif

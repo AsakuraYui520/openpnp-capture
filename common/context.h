@@ -81,7 +81,7 @@ public:
         if a device with the given index does not exist,
         NULL is returned.
         @param id The device index of the capture device.
-        @return a pointer to an UTF-8 string containting the unique ID of the capture device.
+        @return a pointer to an UTF-8 string containing the unique ID of the capture device.
     */
     const char* getDeviceUniqueID(CapDeviceID id) const;
 
@@ -97,7 +97,7 @@ public:
     /** Opens a stream to a device with index/ID id and returns the stream ID.
         If an error occurs (device not found), -1 is returned.
 
-        If the stream is succesfully opnened, capturing starts automatically
+        If the stream is successfully opened, capturing starts automatically
         until the stream (or its associated context) is closed with closeStream.
 
         Note: for now, only one stream per device is supported but opening more
@@ -142,7 +142,7 @@ public:
         @param streamID the ID of the stream.
         @param propertyID the ID of the property.
         @param enable the desired new state of the auto setting.
-        @return true if succesful.
+        @return true if successful.
     */    
     bool setStreamAutoProperty(int32_t streamID, uint32_t propertyID, bool enable);
 
@@ -151,7 +151,7 @@ public:
         @param streamID the ID of the stream.
         @param propertyID the ID of the property.
         @param value the new value of the property.
-        @return true if succesful.
+        @return true if successful.
     */        
     bool setStreamProperty(int32_t streamID, uint32_t propertyID, int32_t value);
 
@@ -159,18 +159,18 @@ public:
     /** Get the value of a property, such as exposure or white balance.
 
         @param streamID the ID of the stream.
-        @param propretyID the ID of the property.
+        @param propertyID the ID of the property.
         @param outValue a reference to the int32_t that will receive the value of the property.
-        @return true if succesful.
+        @return true if successful.
     */
     bool getStreamProperty(int32_t stream, uint32_t propID, int32_t &outValue);
 
     /** Get the value of a property, such as exposure or white balance.
 
         @param streamID the ID of the stream.
-        @param propretyID the ID of the property.
+        @param propertyID the ID of the property.
         @param enable a reference to a boolean that will receive the state of the auto setting.
-        @return true if succesful.
+        @return true if successful.
     */
     bool getStreamAutoProperty(int32_t stream, uint32_t propID, bool &enable);
 

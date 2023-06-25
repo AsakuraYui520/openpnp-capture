@@ -50,13 +50,13 @@ Context* createPlatformContext()
 PlatformMFContext::PlatformMFContext() : Context()
 {
 	HRESULT hr;
-	hr = CoInitializeEx(NULL, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
+	hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
 	if (FAILED(hr))
 	{
 		// This might happen when another part of the program
 		// as already called CoInitializeEx.
 		// and we can carry on without problems... 
-		//LOG(LOG_WARNING, "PlatformContext::CoInitializeEx failed (HRESULT = %08X)!\n", hr);
+		LOG(LOG_WARNING, "PlatformContext::CoInitializeEx failed (HRESULT = %08X)!\n", hr);
 	}
 	else
 	{
@@ -116,7 +116,7 @@ bool PlatformMFContext::enumerateDevices()
 		ComPtr<IMFSourceReader> pSourceReader;
 
 		hr = ppDevices[index]->ActivateObject(__uuidof(IMFMediaSource), (void**)pMediaSource.GetAddressOf());
-		hr = MFCreateSourceReaderFromMediaSource(pMediaSource.Get(), NULL, pSourceReader.GetAddressOf());
+		hr = MFCreateSourceReaderFromMediaSource(pMediaSource.Get(), nullptr, pSourceReader.GetAddressOf());
 		if (!SUCCEEDED(hr))
 		{
 			LOG(LOG_DEBUG, "MFCreateSourceReaderFromMediaSource failed (HRESULT = %08X)!\n", hr);
@@ -188,7 +188,8 @@ std::string wcharPtrToString(const wchar_t* sstr)
 {
 	std::vector<char> buffer;
 	int32_t chars = WideCharToMultiByte(CP_UTF8, 0, sstr, -1, nullptr, 0, nullptr, nullptr);
-	if (chars == 0) return std::string("");
+	if (chars == 0)
+		return {};
 
 	buffer.resize(chars);
 	WideCharToMultiByte(CP_UTF8, 0, sstr, -1, &buffer[0], chars, nullptr, nullptr);
@@ -198,9 +199,9 @@ std::string wcharPtrToString(const wchar_t* sstr)
 std::wstring getIMFAttributesString(IMFAttributes* pAttributes, REFGUID guidKey)
 {
 	WCHAR* pszName = nullptr;
-	UINT32 cchLengh = 0;
+	UINT32 cchLength = 0;
 
-	HRESULT hr = pAttributes->GetAllocatedString(guidKey, &pszName, &cchLengh);
+	HRESULT hr = pAttributes->GetAllocatedString(guidKey, &pszName, &cchLength);
 
 	std::wstring str;
 	if (pszName)
@@ -219,11 +220,11 @@ std::vector<UINT8> getIMFAttributesBlob(IMFAttributes* pAttributes, REFGUID guid
 	if (SUCCEEDED(hr) && blobSize != 0)
 	{
 		std::vector<UINT8> buf(blobSize);
-		hr = pAttributes->GetBlob(guidKey, buf.data(), blobSize, NULL);
+		hr = pAttributes->GetBlob(guidKey, buf.data(), blobSize, nullptr);
 		return buf;
 	}
 
-	return std::vector<UINT8>();
+	return {};
 }
 
 

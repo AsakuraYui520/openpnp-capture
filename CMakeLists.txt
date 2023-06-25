@@ -10,10 +10,15 @@
 # Author: Niels A. Moseley, Jason von Nieda
 #
 
-cmake_minimum_required(VERSION 3.1)
-project (openpnp-capture)
+cmake_minimum_required(VERSION 3.15)
+if (POLICY CMP0091)
+  cmake_policy(SET CMP0091 NEW)
+endif (POLICY CMP0091)
+
 set(OPENPNP_CAPTURE_LIB_VERSION "0.0.28" CACHE STRING "openpnp-capture library version")
 set(OPENPNP_CAPTURE_LIB_SOVERSION "0" CACHE STRING "openpnp-capture library soversion")
+
+project (openpnp-capture VERSION ${OPENPNP_CAPTURE_LIB_VERSION})
 
 # make sure the libjpegturbo is compiled with the
 # position independent flag -fPIC
@@ -71,10 +76,9 @@ set_target_properties(openpnp-capture PROPERTIES
 
 IF (WIN32)
     if(MSVC)
-        # build with static runtime rather than DLL based so that we
-        # don't have to distribute it
-        set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
-        set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
+    set_target_properties(openpnp-capture PROPERTIES
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+        )
     endif()
 
     # set the platform identification string
@@ -87,16 +91,23 @@ IF (WIN32)
     
     # add files for Media Foundation
     if (USE_MEDIA_FOUNDATION)
-    target_sources(openpnp-capture PRIVATE win/platformmfcontext.cpp
-                                           win/platformmfstream.cpp)
-    target_link_libraries(openpnp-capture mfplat mf mfuuid Mfreadwrite shlwapi)                                       
+        target_sources(openpnp-capture PRIVATE win/platformmfcontext.cpp
+                                               win/platformmfstream.cpp)
+        target_link_libraries(openpnp-capture mfplat mf mfuuid Mfreadwrite)
     # add files for DirectShow 
     else()
-    target_sources(openpnp-capture PRIVATE win/platformcontext.cpp
-                                           win/platformstream.cpp)                                   
+        target_sources(openpnp-capture PRIVATE win/platformcontext.cpp
+                                               win/platformstream.cpp)                                   
     endif()
     
     target_link_libraries(openpnp-capture strmiids)  
+
+    if(MSVC)
+        set(MY_VERSIONINFO_RC "${CMAKE_BINARY_DIR}/VersionInfo.rc")
+        configure_file("${CMAKE_SOURCE_DIR}/win/VersionInfo.rc.in" "${MY_VERSIONINFO_RC}")
+    endif()
+
+    target_sources(openpnp-capture PRIVATE ${MY_VERSIONINFO_RC})
 
     # add windows-specific test application
     add_subdirectory(win/tests)

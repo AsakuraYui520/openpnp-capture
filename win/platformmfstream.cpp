@@ -30,6 +30,7 @@
 #include "platformmfstream.h"
 #include "platformmfcontext.h"
 #include <cmath>
+#include <algorithm>
 
 
 #ifdef min
@@ -42,11 +43,11 @@ enum { MEDIA_TYPE_INDEX_DEFAULT = 0xffffffff };
 static std::string fourCCToStringMF(uint32_t fourcc)
 {
 	if (fourcc == 20)
-		return std::string("RGB24");
+		return "RGB24";
 	else if (fourcc == 21)
-		return std::string("ARGB32");
+		return "ARGB32";
 	else if (fourcc == 22)
-		return std::string("RGB32");
+		return "RGB32";
 
 	std::string v;
 	for (uint32_t i = 0; i < 4; i++)
@@ -82,11 +83,11 @@ Stream* createPlatformStream()
 
 struct property_t
 {
-	uint32_t dsProp;            // Directshow CameraControlProperty or VideoProcAmpProperty
+	uint32_t dsProp;            // DirectShow CameraControlProperty or VideoProcAmpProperty
 	bool     isCameraControl;   // if true dsProp is CameraControlProperty
 };
 
-// the order must be the same as the CAPPROPID indeces!
+// the order must be the same as the CAPPROPID indexes!
 static const property_t gs_properties[] =
 {
 	{0, true},                      // dummy
@@ -160,9 +161,9 @@ bool PlatformMFStream::open(Context* owner, deviceInfo* device, uint32_t width, 
 	}
 
 	platformDeviceInfo* dinfo = dynamic_cast<platformDeviceInfo*>(device);
-	if (dinfo == NULL)
+	if (dinfo == nullptr)
 	{
-		LOG(LOG_CRIT, "Could not cast deviceInfo* to platfromDeviceInfo*!\n");
+		LOG(LOG_CRIT, "Could not cast deviceInfo* to platformDeviceInfo*!\n");
 		return false;
 	}
 
@@ -222,7 +223,7 @@ bool PlatformMFStream::open(Context* owner, deviceInfo* device, uint32_t width, 
 		LOG(LOG_WARNING, "Could not create IAMVideoProcAmp\n");
 	}
 
-	hr = m_sourceReader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, NULL, NULL, NULL, NULL);
+	hr = m_sourceReader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, nullptr, nullptr, nullptr, nullptr);
 	if (!SUCCEEDED(hr))
 	{
 		LOG(LOG_ERR, "ReadSample() call failed: (HRESULT = %08X)!\n", hr);
@@ -423,7 +424,7 @@ bool PlatformMFStream::setProperty(uint32_t propID, int32_t value)
 /** set automatic state of property (exposure, zoom etc) of camera/stream */
 bool PlatformMFStream::setAutoProperty(uint32_t propID, bool enabled)
 {
-	if (m_camControl == 0)
+	if (m_camControl == nullptr)
 	{
 		return false;
 	}
@@ -461,7 +462,7 @@ bool PlatformMFStream::setAutoProperty(uint32_t propID, bool enabled)
 	else
 	{
 		//note: m_videoProcAmp only exists if the camera
-		//      supports hardware accelleration of 
+		//      supports hardware acceleration of
 		//      video frame processing, such as
 		//      white balance etc.
 		if (m_videoProcAmp == nullptr)
@@ -470,7 +471,7 @@ bool PlatformMFStream::setAutoProperty(uint32_t propID, bool enabled)
 		}
 
 		// get the current value so we can just set the auto flag
-		// but leave the actualy setting itself intact.
+		// but leave the actually setting itself intact.
 		long currentValue, flags;
 		if (FAILED(m_videoProcAmp->Get(prop, &currentValue, &flags)))
 		{
@@ -489,7 +490,7 @@ bool PlatformMFStream::setAutoProperty(uint32_t propID, bool enabled)
 
 bool PlatformMFStream::getDSProperty(uint32_t propID, long& value, long& flags)
 {
-	if (m_camControl == 0)
+	if (m_camControl == nullptr)
 	{
 		return false;
 	}
@@ -508,7 +509,7 @@ bool PlatformMFStream::getDSProperty(uint32_t propID, long& value, long& flags)
 		else
 		{
 			//note: m_videoProcAmp only exists if the camera
-			//      supports hardware accelleration of 
+			//      supports hardware acceleration of
 			//      video frame processing, such as
 			//      white balance etc.
 			if (m_videoProcAmp == nullptr)
@@ -517,7 +518,7 @@ bool PlatformMFStream::getDSProperty(uint32_t propID, long& value, long& flags)
 			}
 
 			// get the current value so we can just set the auto flag
-			// but leave the actualy setting itself intact.
+			// but leave the actually setting itself intact.
 			if (FAILED(m_videoProcAmp->Get(gs_properties[propID].dsProp, &value, &flags)))
 			{
 				return false;
@@ -626,12 +627,12 @@ STDMETHODIMP PlatformMFStream::QueryInterface(REFIID riid, LPVOID* ppvObject)
 	return S_OK;
 }
 
-STDMETHODIMP_(ULONG) PlatformMFStream::AddRef(void)
+STDMETHODIMP_(ULONG) PlatformMFStream::AddRef()
 {
 	return InterlockedIncrement(&m_cRef);
 }
 
-STDMETHODIMP_(ULONG) PlatformMFStream::Release(void)
+STDMETHODIMP_(ULONG) PlatformMFStream::Release()
 {
 	LONG cRef = InterlockedDecrement(&m_cRef);
 	if (cRef == 0) {
@@ -678,7 +679,7 @@ STDMETHODIMP PlatformMFStream::OnReadSample(HRESULT hrStatus, DWORD dwStreamInde
 
 		if (m_sourceReader)
 		{
-			HRESULT hr = m_sourceReader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, NULL, NULL, NULL, NULL);
+			HRESULT hr = m_sourceReader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, nullptr, nullptr, nullptr, nullptr);
 			if (FAILED(hr))
 				LOG(LOG_ERR, "PlatformMFStream::OnReadSample ReadSample failed:(HRESULT = %08X)\n", hr);
 		}
@@ -942,7 +943,7 @@ bool MFTColorSpaceTransform::InitVideoDecoder(IMFMediaType* pInputType, IMFMedia
 	hr = MFTEnumEx(MFT_CATEGORY_VIDEO_DECODER,
 		MFT_ENUM_FLAG_SYNCMFT | MFT_ENUM_FLAG_LOCALMFT | MFT_ENUM_FLAG_SORTANDFILTER,
 		&inputTypeInfo,
-		NULL,
+		nullptr,
 		&ppActivates,
 		&numActivate);
 
@@ -1024,7 +1025,7 @@ bool MFTColorSpaceTransform::IsCompressedMediaType(IMFMediaType* inputType)
 	GUID majorType, subType;
 	inputType->GetGUID(MF_MT_MAJOR_TYPE, &majorType);
 	inputType->GetGUID(MF_MT_SUBTYPE, &subType);
-	GUID compressedTypes[] = {
+	std::vector<GUID> compressedTypes = {
 		MFVideoFormat_MP43,
 		MFVideoFormat_MP4S,
 		MFVideoFormat_M4S2,
@@ -1055,13 +1056,9 @@ bool MFTColorSpaceTransform::IsCompressedMediaType(IMFMediaType* inputType)
 		MFVideoFormat_AV1,
 	};
 
-	for (int i = 0; i < sizeof(compressedTypes) / sizeof(GUID); ++i)
-	{
-		if (subType == compressedTypes[i])
-			return true;
-	}
+	bool find = std::any_of(compressedTypes.begin(),compressedTypes.end(),[subType](auto type) { return subType == type; });
 
-	return false;
+	return find;
 }
 
 HRESULT MFTColorSpaceTransform::DoTransform(IMFSample* pSample, std::vector<BYTE>& outBuffer)
@@ -1145,11 +1142,11 @@ HRESULT MFTColorSpaceTransform::DoTransform(IMFSample* pSample, std::vector<BYTE
 		return hr;
 
 	BYTE* pbBuffer = nullptr;
-	DWORD cbMaxLengh = 0, cbCurrentLenth = 0;
+	DWORD cbMaxLength = 0, cbCurrentLength = 0;
 
-	if (SUCCEEDED(outMediaBuffer->Lock(&pbBuffer, &cbMaxLengh, &cbCurrentLenth)))
+	if (SUCCEEDED(outMediaBuffer->Lock(&pbBuffer, &cbMaxLength, &cbCurrentLength)))
 	{
-		outBuffer.resize(cbCurrentLenth);
+		outBuffer.resize(cbCurrentLength);
 
 		for (UINT32 y = 0; y < m_height; y++)
 		{

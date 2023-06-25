@@ -120,7 +120,7 @@ DLLPUBLIC CapResult Cap_releaseContext(CapContext ctx);
 
 /** Get the number of capture devices on the system.
     note: this can change dynamically due to the
-    pluggin and unplugging of USB devices.
+    plugin and unplugging of USB devices.
     @param ctx The ID of the context.
     @return The number of capture devices found.
 */
@@ -134,7 +134,7 @@ DLLPUBLIC uint32_t Cap_getDeviceCount(CapContext ctx);
     NULL is returned.
     @param ctx The ID of the context.
     @param index The device index of the capture device.
-    @return a pointer to an UTF-8 string containting the name of the capture device.
+    @return a pointer to an UTF-8 string containing the name of the capture device.
 */
 DLLPUBLIC const char* Cap_getDeviceName(CapContext ctx, CapDeviceID index);
 
@@ -156,7 +156,7 @@ DLLPUBLIC const char* Cap_getDeviceName(CapContext ctx, CapDeviceID index);
     NULL is returned.
     @param ctx The ID of the context.
     @param index The device index of the capture device.
-    @return a pointer to an UTF-8 string containting the unique ID of the capture device.
+    @return a pointer to an UTF-8 string containing the unique ID of the capture device.
 */
 DLLPUBLIC const char* Cap_getDeviceUniqueID(CapContext ctx, CapDeviceID index);
 
@@ -310,7 +310,7 @@ DLLPUBLIC void Cap_installCustomLogFunction(CapCustomLogFunc logFunc);
     In addition to a version number, this should 
     contain information on the platform,
     e.g. Win32/Win64/Linux32/Linux64/OSX etc,
-    wether or not it is a release or debug
+    whether or not it is a release or debug
     build and the build date.
 
     When building the library, please set the 
