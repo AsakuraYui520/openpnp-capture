@@ -90,16 +90,20 @@ IF (WIN32)
     option(USE_MEDIA_FOUNDATION "Use Media Foundation API instead DirectShow" TRUE)
     
     # add files for Media Foundation
-    if (USE_MEDIA_FOUNDATION)
+    #if (USE_MEDIA_FOUNDATION)
         target_sources(openpnp-capture PRIVATE win/platformmfcontext.cpp
                                                win/platformmfstream.cpp)
         target_link_libraries(openpnp-capture mfplat mf mfuuid Mfreadwrite)
     # add files for DirectShow 
-    else()
+    #else()
         target_sources(openpnp-capture PRIVATE win/platformcontext.cpp
                                                win/platformstream.cpp)                                   
+    #endif()
+        target_sources(openpnp-capture PRIVATE win/libmainWin.cpp)
+
+    if (USE_MEDIA_FOUNDATION)
+        add_definitions(-DUSE_MEDIA_FOUNDATION)
     endif()
-    
     target_link_libraries(openpnp-capture strmiids)  
 
     if(MSVC)

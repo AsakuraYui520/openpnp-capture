@@ -38,7 +38,9 @@
 Stream::Stream() :
     m_owner(nullptr),
     m_isOpen(false),
-    m_frames(0)
+    m_frames(0),
+	m_callBack(nullptr),
+    m_pUserParam(nullptr)
 {
 }
 
@@ -73,7 +75,7 @@ bool Stream::captureFrame(uint8_t *RGBbufferPtr, uint32_t RGBbufferBytes)
 
 void Stream::submitBuffer(const uint8_t *ptr, size_t bytes)
 {
-    // sanity check
+    // check
     if (ptr == nullptr)
     {
         return;
@@ -81,7 +83,7 @@ void Stream::submitBuffer(const uint8_t *ptr, size_t bytes)
     
     m_bufferMutex.lock();
     
-    if (m_frameBuffer.size() == 0)
+    if (m_frameBuffer.empty())
     {
         LOG(LOG_ERR,"Stream::m_frameBuffer size is 0 - cant store frame buffers!\n");
     }
@@ -95,11 +97,33 @@ void Stream::submitBuffer(const uint8_t *ptr, size_t bytes)
         LOG(LOG_WARNING, "Warning: captureFrame received incorrect buffer size (got %d want %d)\n", bytes, wantSize);
     }
 
-    if (m_frameBuffer.size() >= bytes)
-    {
-        memcpy(&m_frameBuffer[0], ptr, bytes);
-        m_newFrame = true; 
-        m_frames++;
-    }
+	if(m_callBack)
+	{
+		CAP_FRAME_CALLBACK_PARAM param = { nullptr };
+		param.pImgBuf = ptr;
+		param.nFrameID = ++m_frames;
+		param.nImgSize = (int32_t)bytes;
+		param.pUserParam = m_pUserParam;
+		param.nWidth = (int32_t)m_width;
+		param.nHeight = (int32_t)m_height;
+		m_callBack(&param);
+	}
+	else if (m_frameBuffer.size() >= bytes)
+	{
+		if(m_frameBuffer.data() != ptr)
+		    memcpy(&m_frameBuffer[0], ptr, bytes);
+		m_newFrame = true;
+		m_frames++;
+	}
+
     m_bufferMutex.unlock();
+}
+
+void Stream::installFrameCallback(void *pUserParam, CapFrameCallback callBackFun)
+{
+	m_bufferMutex.lock();
+	m_pUserParam = pUserParam;
+	m_callBack = callBackFun;
+	m_bufferMutex.unlock();
+
 }

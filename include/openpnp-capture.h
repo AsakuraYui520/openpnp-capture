@@ -1,4 +1,4 @@
-/*
+﻿/*
 
     OpenPnp-Capture: a video capture subsystem.
 
@@ -213,6 +213,31 @@ DLLPUBLIC uint32_t Cap_isOpenStream(CapContext ctx, CapStream stream);
 /********************************************************************************** 
      FRAME CAPTURING / INFO
 **********************************************************************************/
+
+typedef struct CAP_FRAME_CALLBACK_PARAM
+{
+	void *pUserParam;		///< 用户私有数据
+	int32_t status;         ///< 图像的返回状态
+	const void *pImgBuf;	///< 图像buffer地址（开启chunkdata后，pImgBuf 包含图像数据和帧信息数据 ）
+	int32_t nImgSize;		///< 图像大小数据大小，单位字节（开启chunkdata后，nImgsize为图像数据大小+帧信息大小）
+	int32_t nWidth;			///< 图像的宽
+	int32_t nHeight;		///< 图像的高
+	int32_t nPixelFormat;	///< 图像的PixFormat
+	uint64_t nFrameID;		///< 图像的帧号
+	uint64_t nTimestamp;	///< 图像的时间戳
+	int32_t reserved[1];	///< 保留
+} CAP_FRAME_CALLBACK_PARAM;
+
+typedef void (*CapFrameCallback)(CAP_FRAME_CALLBACK_PARAM *pFrameData);
+
+/** install a custom callback for a logging function.
+
+    the callback function must have the following
+    structure:
+
+        void func(uint32_t level, const char *string);
+*/
+DLLPUBLIC void Cap_installFrameCallback(CapContext ctx, CapStream stream, void *pUserParam, CapFrameCallback callBackFun);
 
 /** this function copies the most recent RGB frame data
     to the given buffer.

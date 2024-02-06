@@ -40,7 +40,7 @@
 #include <strsafe.h>
 #include <mfreadwrite.h>
 #include <mferror.h>
-#include <wrl/client.h>
+
 #include <assert.h>
 #include <stdint.h>
 #include <vector>
@@ -48,11 +48,9 @@
 #include "../common/logging.h"
 #include "../common/stream.h"
 
-template <class T>
-using ComPtr = Microsoft::WRL::ComPtr<T>;
+
 
 class Context;         // pre-declaration
-class PlatformStreamMF;  // pre-declaration
 
 
 class MFTColorSpaceTransform

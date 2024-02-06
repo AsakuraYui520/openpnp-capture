@@ -70,19 +70,19 @@ void showAutoProperty(CapContext ctx, int32_t streamID, uint32_t propertyID)
 
 void showAutoProperties(CapContext ctx, int32_t streamID)
 {
-    printf("White balance: ");
+    printf("Auto White balance: ");
     showAutoProperty(ctx, streamID, CAPPROPID_WHITEBALANCE);
 
-    printf("Exposure     : ");
+    printf("Auto Exposure     : ");
     showAutoProperty(ctx, streamID, CAPPROPID_EXPOSURE);
 
-    printf("Focus        : ");
+    printf("Auto Focus        : ");
     showAutoProperty(ctx, streamID, CAPPROPID_FOCUS);
     
-    printf("Zoom         : ");
+    printf("Auto Zoom         : ");
     showAutoProperty(ctx, streamID, CAPPROPID_ZOOM);
 
-    printf("Gain         : ");
+    printf("Auto Gain         : ");
     showAutoProperty(ctx, streamID, CAPPROPID_GAIN);
 }
 
@@ -246,7 +246,7 @@ int main(int argc, char*argv[])
 
     if (Cap_setAutoProperty(ctx, streamID, CAPPROPID_WHITEBALANCE, 0) != CAPRESULT_OK)
     {
-        printf("Could not disabe auto-whitebalance\n");
+        printf("Could not disable auto-whitebalance\n");
     }
 
     if (Cap_setAutoProperty(ctx, streamID, CAPPROPID_GAIN, 0) != CAPRESULT_OK)
@@ -339,7 +339,7 @@ int main(int argc, char*argv[])
     showAutoProperties(ctx, streamID);
 
     // try to create a message loop so the preview
-    // window doesn't crash.. 
+    // window doesn't crash.
 
     MSG msg;
     BOOL bRet;
@@ -351,9 +351,9 @@ int main(int argc, char*argv[])
     uint32_t frameWriteCounter=0;
     while((c != 'q') && (c != 'Q'))
     {
-        if (PeekMessage(&msg, NULL, 0, 0, 0) != 0)
+        if (PeekMessage(&msg, nullptr, 0, 0, 0) != 0)
         {
-            bRet = GetMessage(&msg, NULL, 0, 0);
+            bRet = GetMessage(&msg, nullptr, 0, 0);
 
             if (bRet > 0)  // (bRet > 0 indicates a message that must be processed.)
             {

@@ -55,7 +55,7 @@ class PlatformStream;  // pre-declaration
 class StreamCallbackHandler : public ISampleGrabberCB
 {
 public:
-    StreamCallbackHandler(PlatformStream *stream) : m_stream(stream)
+    explicit StreamCallbackHandler(PlatformStream *stream) : m_stream(stream)
     {
         m_callbackCounter = 0;
     }
@@ -66,17 +66,17 @@ public:
     }
 
     /** callback handler used in this library */
-    virtual HRESULT __stdcall SampleCB(double time, IMediaSample* sample) override;
+    HRESULT __stdcall SampleCB(double time, IMediaSample* sample) override;
 
     /** alternate callback handler (not used) */
-    virtual HRESULT __stdcall BufferCB(double time, BYTE* buffer, long len) override
+    HRESULT __stdcall BufferCB(double time, BYTE* buffer, long len) override
     {
         //m_callbackCounter++;
         return S_OK;
     }
 
     /** function implementation required by ISampleGrabberCB base class */
-    virtual HRESULT __stdcall QueryInterface( REFIID iid, LPVOID *ppv )
+    HRESULT __stdcall QueryInterface( REFIID iid, LPVOID *ppv ) override
     {
         if( iid == IID_ISampleGrabberCB || iid == IID_IUnknown )
         {
@@ -87,13 +87,13 @@ public:
     }
 
     /** function implementation required by ISampleGrabberCB base class */
-    virtual ULONG	__stdcall AddRef()
+    ULONG	__stdcall AddRef() override
     {
         return 1;
     }
 
     /** function implementation required by ISampleGrabberCB base class */
-    virtual ULONG	__stdcall Release()
+    ULONG	__stdcall Release() override
     {
         return 2;
     }
@@ -127,36 +127,36 @@ public:
     /** Open a capture stream to a device and request a specific (internal) stream format. 
         When succesfully opened, capturing starts immediately.
     */
-    virtual bool open(Context *owner, deviceInfo *device, uint32_t width, uint32_t height, 
+    bool open(Context *owner, deviceInfo *device, uint32_t width, uint32_t height,
         uint32_t fourCC, uint32_t fps) override;
 
     /** Close a capture stream */
-    virtual void close() override;
+    void close() override;
 
     /** set the frame rate */
-    virtual bool setFrameRate(uint32_t fps) override;
+    bool setFrameRate(uint32_t fps) override;
 
     /** Return the FOURCC media type of the stream */
-    virtual uint32_t getFOURCC() override;
+    uint32_t getFOURCC() override;
 
     /** get the limits of a camera/stream property (exposure, zoom etc) */
-    virtual bool getPropertyLimits(uint32_t propID, int32_t *min, int32_t *max, int32_t *dValue) override;
+    bool getPropertyLimits(uint32_t propID, int32_t *min, int32_t *max, int32_t *dValue) override;
 
     /** set property (exposure, zoom etc) of camera/stream */
-    virtual bool setProperty(uint32_t propID, int32_t value) override;
+    bool setProperty(uint32_t propID, int32_t value) override;
 
     /** set automatic state of property (exposure, zoom etc) of camera/stream */
-    virtual bool setAutoProperty(uint32_t propID, bool enabled) override;
+    bool setAutoProperty(uint32_t propID, bool enabled) override;
 
     /** get property (exposure, zoom etc) of camera/stream */
-    virtual bool getProperty(uint32_t propID, int32_t &outValue) override;
+    bool getProperty(uint32_t propID, int32_t &outValue) override;
     
     /** get automatic state of property (exposure, zoom etc) of camera/stream */
-    virtual bool getAutoProperty(uint32_t propID, bool &enabled) override;
+    bool getAutoProperty(uint32_t propID, bool &enabled) override;
 
 protected:
     /** A re-implementation of Stream::submitBuffer with BGR to RGB conversion */
-    virtual void submitBuffer(const uint8_t *ptr, size_t bytes) override;
+    void submitBuffer(const uint8_t *ptr, size_t bytes) override;
 
     /** Add the Direct show filter graph to the object list so
         GraphEdt.exe can see it - for debugging purposes only.

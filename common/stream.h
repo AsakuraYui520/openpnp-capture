@@ -32,6 +32,7 @@
 #include <vector>
 #include <mutex>
 #include "logging.h"
+#include "openpnp-capture.h"
 
 class Context;      // pre-declaration
 class deviceInfo;   // pre-declaration
@@ -103,6 +104,7 @@ public:
     /** get automatic state of property (exposure, zoom etc) of camera/stream */
     virtual bool getAutoProperty(uint32_t propID, bool &enable) = 0;
 
+	void installFrameCallback(void *pUserParam, CapFrameCallback callBackFun);
 protected:
     /** Thread-safe copying of the 24-bit RGB buffer pointed to
         by 'ptr' with length 'bytes'.
@@ -121,10 +123,13 @@ protected:
     uint32_t    m_height;                   ///< The height of the frame in pixels
     bool        m_isOpen;
 
-    std::mutex  m_bufferMutex;              ///< mutex to protect m_frameBuffer and m_newFrame
+    std::recursive_mutex  m_bufferMutex;              ///< mutex to protect m_frameBuffer and m_newFrame
     bool        m_newFrame;                 ///< new frame buffer flag
     std::vector<uint8_t> m_frameBuffer;     ///< raw frame buffer
     uint32_t    m_frames;                   ///< number of frames captured
+
+	CapFrameCallback m_callBack;
+	void*       m_pUserParam;
 };
 
 #endif

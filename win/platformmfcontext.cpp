@@ -31,26 +31,22 @@
 
 #include <vector>
 #include <stdio.h>
-
 #include "../common/logging.h"
 #include "platformmfstream.h"
 #include "platformmfcontext.h"
+#include "scopedcomptr.h"
+
+
+
 
 std::wstring getIMFAttributesString(IMFAttributes* pAttributes, REFGUID guidKey);
 std::string wstringToString(const std::wstring& wstr);
 std::string wcharPtrToString(const wchar_t* sstr);
 
-// a platform factory function needed by
-// libmain.cpp
-Context* createPlatformContext()
-{
-	return new PlatformMFContext();
-}
-
 PlatformMFContext::PlatformMFContext() : Context()
 {
 	HRESULT hr;
-	hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
+	hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 	if (FAILED(hr))
 	{
 		// This might happen when another part of the program
@@ -85,7 +81,7 @@ bool PlatformMFContext::enumerateDevices()
 	HRESULT hr = S_OK;
 	ComPtr<IMFAttributes> pAttributes;
 
-	hr = MFCreateAttributes(pAttributes.GetAddressOf(), 1);
+	hr = MFCreateAttributes(&pAttributes, 1);
 	if (!SUCCEEDED(hr))
 		return false;
 

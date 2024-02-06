@@ -40,22 +40,17 @@ extern void _FreeMediaType(AM_MEDIA_TYPE& mt);
 extern void _DeleteMediaType(AM_MEDIA_TYPE *pmt);
 
 
-Stream* createPlatformStream()
-{
-    return new PlatformStream();
-}
-
 // **********************************************************************
 //   Property translation data
 // **********************************************************************
 
 struct property_t
 {
-    uint32_t dsProp;            // Directshow CameraControlProperty or VideoProcAmpProperty
-    bool     isCameraControl;   // if true dsProp is CameraControlProperty
+    uint32_t dsProp;            // DirectShow CameraControlProperty or VideoProcAmpProperty
+    bool     isCameraControl;   // if true, dsProp is CameraControlProperty
 };
 
-// the order must be the same as the CAPPROPID indeces!
+// the order must be the same as the CAPPROPID indexes!
 static const property_t gs_properties[] =
 {
     {0, true},                      // dummy
@@ -114,7 +109,9 @@ PlatformStream::PlatformStream() :
     m_sourceFilter(nullptr),
     m_nullRenderer(nullptr),
     m_sampleGrabber(nullptr),
-    m_camControl(nullptr)
+    m_camControl(nullptr),
+	m_capture(nullptr),
+	m_videoProcAmp(nullptr)
 {
 
 }
@@ -157,10 +154,8 @@ void PlatformStream::close()
     SafeRelease(&m_nullRenderer);
     //SafeRelease(&m_videoProcAmp);
 
-    if (m_callbackHandler != 0)
-    {
-        delete m_callbackHandler;
-    }
+	delete m_callbackHandler;
+
 
     m_owner = nullptr;
     m_width = 0;
@@ -192,9 +187,9 @@ bool PlatformStream::open(Context *owner, deviceInfo *device, uint32_t width, ui
     }
 
     platformDeviceInfo *dinfo = dynamic_cast<platformDeviceInfo*>(device);
-    if (dinfo == NULL)
+    if (dinfo == nullptr)
     {
-        LOG(LOG_CRIT, "Could not cast deviceInfo* to platfromDeviceInfo*!");
+        LOG(LOG_CRIT, "Could not cast deviceInfo* to platformDeviceInfo*!");
         return false;
     }
 
@@ -204,7 +199,7 @@ bool PlatformStream::open(Context *owner, deviceInfo *device, uint32_t width, ui
     m_height = 0;    
 
     // Create the filter graph object.
-    HRESULT hr = CoCreateInstance (CLSID_FilterGraph, NULL, CLSCTX_INPROC, IID_IFilterGraph2, (void **) &m_graph);
+    HRESULT hr = CoCreateInstance (CLSID_FilterGraph, nullptr, CLSCTX_INPROC, IID_IFilterGraph2, (void **) &m_graph);
     if (FAILED(hr))
     {
         LOG(LOG_ERR,"Could not create IFilterGraph2\n");
@@ -212,7 +207,7 @@ bool PlatformStream::open(Context *owner, deviceInfo *device, uint32_t width, ui
     }
 
 	//create the CaptureGraphBuilder
-	hr = CoCreateInstance(CLSID_CaptureGraphBuilder2,NULL,CLSCTX_INPROC_SERVER,IID_ICaptureGraphBuilder2,(void**) &m_capture);
+	hr = CoCreateInstance(CLSID_CaptureGraphBuilder2,nullptr,CLSCTX_INPROC_SERVER,IID_ICaptureGraphBuilder2,(void**) &m_capture);
 	if (FAILED(hr))
     {
         LOG(LOG_ERR,"Could not create ICaptureGraphBuilder2\n");
@@ -222,7 +217,7 @@ bool PlatformStream::open(Context *owner, deviceInfo *device, uint32_t width, ui
     m_capture->SetFiltergraph(m_graph);
 
     //get the controller for the graph
-	hr = m_graph->QueryInterface(IID_IMediaControl, (void**) &m_control);    
+	hr = m_graph->QueryInterface(IID_IMediaControl, (void**)&m_control);
     if (FAILED(hr))
     {
         LOG(LOG_ERR,"Could not create IMediaControl\n");
@@ -244,8 +239,8 @@ bool PlatformStream::open(Context *owner, deviceInfo *device, uint32_t width, ui
     }
 
     //set the desired frame buffer format
-    IAMStreamConfig *pConfig = NULL;
-    hr = m_capture->FindInterface(&PIN_CATEGORY_CAPTURE, 0, m_sourceFilter, IID_IAMStreamConfig, (void**)&pConfig);
+    IAMStreamConfig *pConfig = nullptr;
+    hr = m_capture->FindInterface(&PIN_CATEGORY_CAPTURE, nullptr, m_sourceFilter, IID_IAMStreamConfig, (void**)&pConfig);
     if (FAILED(hr))
     {
         LOG(LOG_ERR,"Could not create IAMStreamConfig\n");
@@ -255,7 +250,7 @@ bool PlatformStream::open(Context *owner, deviceInfo *device, uint32_t width, ui
     ScopedComPtr<IAMStreamConfig> streamConfig(pConfig);
 
     // find the desired video mode
-    AM_MEDIA_TYPE *selectedConfig = NULL;
+    AM_MEDIA_TYPE *selectedConfig = nullptr;
 
     int iCount = 0, iSize = 0;
     hr = streamConfig->GetNumberOfCapabilities(&iCount, &iSize);
@@ -289,7 +284,7 @@ bool PlatformStream::open(Context *owner, deviceInfo *device, uint32_t width, ui
                 if ((pmtConfig->majortype == MEDIATYPE_Video) &&
                     (pmtConfig->formattype == FORMAT_VideoInfo) &&
                     (pmtConfig->cbFormat >= sizeof (VIDEOINFOHEADER)) &&
-                    (pmtConfig->pbFormat != NULL))
+                    (pmtConfig->pbFormat != nullptr))
                 {
                     VIDEOINFOHEADER *pVih = reinterpret_cast<VIDEOINFOHEADER*>(pmtConfig->pbFormat);
 
@@ -339,7 +334,7 @@ bool PlatformStream::open(Context *owner, deviceInfo *device, uint32_t width, ui
     }
 
 
-    // create camera control interface for exposure control etc . 
+    // create camera control interface for exposure control etc.
     m_camControl = nullptr;
     hr = m_sourceFilter->QueryInterface(IID_IAMCameraControl, (void **)&m_camControl); 
     if (hr != S_OK) 
@@ -360,7 +355,7 @@ bool PlatformStream::open(Context *owner, deviceInfo *device, uint32_t width, ui
     }
 
     //create a samplegrabber filter for the device
-    hr = CoCreateInstance(CLSID_SampleGrabber, NULL, CLSCTX_INPROC_SERVER,IID_IBaseFilter, (void**)&m_sampleGrabberFilter);
+    hr = CoCreateInstance(CLSID_SampleGrabber, nullptr, CLSCTX_INPROC_SERVER,IID_IBaseFilter, (void**)&m_sampleGrabberFilter);
     if (hr < 0)
     {
         LOG(LOG_ERR,"Could not create sample grabber filter\n");
@@ -409,7 +404,7 @@ bool PlatformStream::open(Context *owner, deviceInfo *device, uint32_t width, ui
         m_callbackHandler->reset();
     }
 
-    hr = m_sampleGrabber->SetCallback(m_callbackHandler,0);
+    hr = m_sampleGrabber->SetCallback(m_callbackHandler, 0);
     if (hr != S_OK)
     {
         LOG(LOG_ERR,"Could not set callback on sample grabber (HRESULT=%08X)\n", hr);
@@ -420,12 +415,12 @@ bool PlatformStream::open(Context *owner, deviceInfo *device, uint32_t width, ui
        using 'PIN_CATEGORY_PREVIEW' gives 30 fps at HD res on a Microsoft LifeCam 3000,
        whereas 'PIN_CATEGORY_CAPTURE' results in 2.5 fps !?!
 
-       In order to not create a default display window, the end-point of the stream
+       To not create a default display window, the end-point of the stream
        must be a Null renderer. It can be created by:
 
         //NULL RENDERER//
         //used to give the video stream somewhere to go to.
-        hr = CoCreateInstance(CLSID_NullRenderer, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)(&m_nullRenderer));
+        Hr = CoCreateInstance(CLSID_NullRenderer, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)(&m_nullRenderer));
         if (FAILED(hr))
         {
             DebugPrintOut("ERROR: Could not create filter - NullRenderer\n");
@@ -439,14 +434,14 @@ bool PlatformStream::open(Context *owner, deviceInfo *device, uint32_t width, ui
     //        or should we use a special define to 
     //        enable the preview window?
     #ifndef _DEBUG
-    hr = CoCreateInstance(CLSID_NullRenderer, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)(&m_nullRenderer));
+    hr = CoCreateInstance(CLSID_NullRenderer, nullptr, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)(&m_nullRenderer));
     if (FAILED(hr))
     {
         LOG(LOG_WARNING,"Could not create a NULL renderer - using NULL ptr instead.");
     }
     else
     {
-        // we need to add the filter to the graph to be able to use it.. 
+        // we need to add the filter to the graph to be able to use it.
         hr = m_graph->AddFilter(m_nullRenderer, L"NULLRenderer");
         if (hr < 0)
         {
@@ -532,7 +527,7 @@ uint32_t PlatformStream::getFOURCC()
 
 void PlatformStream::dumpCameraProperties()
 {
-    if (m_camControl != 0)
+    if (m_camControl != nullptr)
     {
 		//query exposure
 		long flags, mmin, mmax, delta, defaultValue;
@@ -678,7 +673,7 @@ bool PlatformStream::setProperty(uint32_t propID, int32_t value)
                 return false; // no VideoProcAmp on board camera
             }
 
-            // first we get the property so we can retain the flag settings
+            // first we get the property, so we can retain the flag settings
             if (m_videoProcAmp->Get(gs_properties[propID].dsProp, &dummy, &flags) != S_OK)
             {
                 return false;
@@ -701,7 +696,7 @@ bool PlatformStream::setProperty(uint32_t propID, int32_t value)
 /** set automatic state of property (exposure, zoom etc) of camera/stream */
 bool PlatformStream::setAutoProperty(uint32_t propID, bool enabled)
 {
-    if (m_camControl == 0)
+    if (m_camControl == nullptr)
     {
         return false;
     }
@@ -739,16 +734,16 @@ bool PlatformStream::setAutoProperty(uint32_t propID, bool enabled)
     else
     {
         //note: m_videoProcAmp only exists if the camera
-        //      supports hardware accelleration of 
+        //      supports hardware acceleration of
         //      video frame processing, such as
-        //      white balance etc.
+        //      white balance, etc.
         if (m_videoProcAmp == nullptr)
         {
             return false;
         }
 
-        // get the current value so we can just set the auto flag
-        // but leave the actualy setting itself intact.
+        // get the current value, so we can just set the auto flag
+        // but leave the actually setting itself intact.
         long currentValue, flags;
         if (FAILED(m_videoProcAmp->Get(prop, &currentValue, &flags)))
         {
@@ -767,7 +762,7 @@ bool PlatformStream::setAutoProperty(uint32_t propID, bool enabled)
 
 bool PlatformStream::getDSProperty(uint32_t propID, long &value, long &flags)
 {
-    if (m_camControl == 0)
+    if (m_camControl == nullptr)
     {
         return false;
     }
@@ -786,16 +781,16 @@ bool PlatformStream::getDSProperty(uint32_t propID, long &value, long &flags)
         else
         {
             //note: m_videoProcAmp only exists if the camera
-            //      supports hardware accelleration of 
+            //      supports hardware acceleration of
             //      video frame processing, such as
-            //      white balance etc.
+            //      white balance, etc.
             if (m_videoProcAmp == nullptr)
             {
                 return false;
             }
 
-            // get the current value so we can just set the auto flag
-            // but leave the actualy setting itself intact.
+            // get the current value, so we can just set the auto flag
+            // but leave the actually setting itself intact.
             if (FAILED(m_videoProcAmp->Get(gs_properties[propID].dsProp, &value, &flags)))
             {
                 return false;
@@ -809,10 +804,10 @@ bool PlatformStream::getDSProperty(uint32_t propID, long &value, long &flags)
 /** get property (exposure, zoom etc) of camera/stream */
 bool PlatformStream::getProperty(uint32_t propID, int32_t &outValue)
 {
-    // in keeping with the documentation, we assume long here.. 
+    // in keeping with the documentation, we assume long here.
     // the DS documentation does not specify the actual bit-width
-    // for the vars, but we use 32-bit ints in the capture lib
-    // so we convert to 32-bits and hope for the best.. 
+    // for the vars, but we use 32-bit ints in the capture lib,
+    // so we convert to 32-bits and hope for the best.
 
     long value, flags;
     if (PlatformStream::getDSProperty(propID, value, flags))
@@ -831,10 +826,10 @@ bool PlatformStream::getAutoProperty(uint32_t propID, bool &enabled)
     // and
     // CameraControl_Flags_Manual == VideoProcAmp_Flags_Manual
     // to simplify the code.
-    // We make sure this assumption is true via a static assert
+    // We make sure this assumption is true via a static asserted
     
     static_assert(CameraControl_Flags_Auto == VideoProcAmp_Flags_Auto, "Boolean flags dont match - code change needed!");
-    //static_assert(CameraControl_Flags_Manual == VideoProcAmp_Flags_Manual, "Boolean flags dont match - code change needed!");
+    //static_assert(CameraControl_Flags_Manual == VideoProcAmp_Flags_Manual, "Boolean flags don't match - code change needed!");
 
     //LOG(LOG_VERBOSE, "PlatformStream::getAutoProperty called\n");
 
@@ -852,7 +847,7 @@ void PlatformStream::submitBuffer(const uint8_t *ptr, size_t bytes)
 {
     m_bufferMutex.lock();
     
-    if (m_frameBuffer.size() == 0)
+    if (m_frameBuffer.empty())
     {
         LOG(LOG_ERR,"Stream::m_frameBuffer size is 0 - cant store frame buffers!\n");
     }
@@ -887,8 +882,7 @@ void PlatformStream::submitBuffer(const uint8_t *ptr, size_t bytes)
             }
         }
 
-        m_newFrame = true; 
-        m_frames++;        
+		Stream::submitBuffer(m_frameBuffer.data(), m_frameBuffer.size());
     }
 
     m_bufferMutex.unlock();
@@ -897,8 +891,8 @@ void PlatformStream::submitBuffer(const uint8_t *ptr, size_t bytes)
 
 HRESULT PlatformStream::AddToRot(IUnknown *pUnkGraph, DWORD *pdwRegister)
 {
-    IMoniker * pMoniker = NULL;
-    IRunningObjectTable *pROT = NULL;
+    IMoniker * pMoniker = nullptr;
+    IRunningObjectTable *pROT = nullptr;
 
     if (FAILED(GetRunningObjectTable(0, &pROT))) 
     {
@@ -951,7 +945,7 @@ HRESULT PlatformStream::SaveGraphFile(IGraphBuilder *pGraph)
     const WCHAR wszPath[] = L"filtergraph.grf";
     HRESULT hr;
     
-    IStorage *pStorage = NULL;
+    IStorage *pStorage = nullptr;
     hr = StgCreateDocfile(
         wszPath,
         STGM_CREATE | STGM_TRANSACTED | STGM_READWRITE | STGM_SHARE_EXCLUSIVE,
@@ -972,7 +966,7 @@ HRESULT PlatformStream::SaveGraphFile(IGraphBuilder *pGraph)
         return hr;
     }
 
-    IPersistStream *pPersist = NULL;
+    IPersistStream *pPersist = nullptr;
     pGraph->QueryInterface(IID_IPersistStream, (void**)&pPersist);
     hr = pPersist->Save(pStream, TRUE);
     pStream->Release();

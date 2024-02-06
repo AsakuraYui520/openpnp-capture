@@ -166,14 +166,14 @@ int32_t Context::openStream(CapDeviceID id, CapFormatID formatID)
     }
     else
     {
-        printf("[DBG ] FOURCC = ");
-        uint32_t fcc = s->getFOURCC();
-        for(uint32_t i=0; i<4; i++)
-        {            
-            printf("%c", (fcc & 0xff));
-            fcc >>= 8;
-        }
-        printf("\n");
+//        printf("[DBG ] FOURCC = ");
+//        uint32_t fcc = s->getFOURCC();
+//        for(uint32_t i=0; i<4; i++)
+//        {
+//            printf("%c", (fcc & 0xff));
+//            fcc >>= 8;
+//        }
+//        printf("\n");
     }
 
     int32_t streamID = storeStream(s);
@@ -373,3 +373,12 @@ std::string fourCCToString(uint32_t fourcc)
     }
     return v;
 }
+
+
+void Context::installFrameCallback(int32_t streamID, void *pUserParam, CapFrameCallback callBackFun)
+{
+	Stream* stream = m_streams[streamID];
+	if (stream == nullptr) return;
+	stream->installFrameCallback(pUserParam, callBackFun);
+}
+

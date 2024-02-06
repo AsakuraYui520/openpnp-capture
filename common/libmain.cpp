@@ -48,7 +48,7 @@ DLLPUBLIC CapContext Cap_createContext()
 
 DLLPUBLIC CapResult Cap_releaseContext(CapContext ctx)
 {
-    if (ctx != 0)
+    if (ctx != nullptr)
     {
         delete (Context*)ctx;
         return CAPRESULT_OK;
@@ -60,7 +60,7 @@ DLLPUBLIC CapResult Cap_releaseContext(CapContext ctx)
 
 DLLPUBLIC uint32_t Cap_getDeviceCount(CapContext ctx)
 {
-    if (ctx != 0)
+    if (ctx != nullptr)
     {
         return reinterpret_cast<Context*>(ctx)->getDeviceCount();
     }
@@ -69,25 +69,25 @@ DLLPUBLIC uint32_t Cap_getDeviceCount(CapContext ctx)
 
 DLLPUBLIC const char* Cap_getDeviceName(CapContext ctx, CapDeviceID id)
 {
-    if (ctx != 0)
+    if (ctx != nullptr)
     {
         return reinterpret_cast<Context*>(ctx)->getDeviceName(id);
     }
-    return 0;
+    return nullptr;
 }
 
 DLLPUBLIC const char* Cap_getDeviceUniqueID(CapContext ctx, CapDeviceID id)
 {
-    if (ctx != 0)
+    if (ctx != nullptr)
     {
         return reinterpret_cast<Context*>(ctx)->getDeviceUniqueID(id);
     }
-    return 0;    
+    return nullptr;
 }
 
 DLLPUBLIC int32_t Cap_getNumFormats(CapContext ctx, CapDeviceID id)
 {
-    if (ctx != 0)
+    if (ctx != nullptr)
     {
         return reinterpret_cast<Context*>(ctx)->getNumFormats(id);
     }
@@ -96,7 +96,7 @@ DLLPUBLIC int32_t Cap_getNumFormats(CapContext ctx, CapDeviceID id)
 
 DLLPUBLIC CapResult Cap_getFormatInfo(CapContext ctx, CapDeviceID index, CapFormatID id, CapFormatInfo *info)
 {
-    if (ctx != 0)
+    if (ctx != nullptr)
     {
         if (reinterpret_cast<Context*>(ctx)->getFormatInfo(index, id, info))
         {
@@ -113,7 +113,7 @@ DLLPUBLIC void Cap_setLogLevel(uint32_t level)
 
 DLLPUBLIC CapStream Cap_openStream(CapContext ctx, CapDeviceID index, CapFormatID formatID)
 {
-    if (ctx != 0)
+    if (ctx != nullptr)
     {
         Context *c = reinterpret_cast<Context*>(ctx);
         return c->openStream(index, formatID);
@@ -123,7 +123,7 @@ DLLPUBLIC CapStream Cap_openStream(CapContext ctx, CapDeviceID index, CapFormatI
 
 DLLPUBLIC CapResult Cap_closeStream(CapContext ctx, CapStream stream)
 {
-    if (ctx != 0)
+    if (ctx != nullptr)
     {
         Context *c = reinterpret_cast<Context*>(ctx);
         c->closeStream(stream);
@@ -133,7 +133,7 @@ DLLPUBLIC CapResult Cap_closeStream(CapContext ctx, CapStream stream)
 
 DLLPUBLIC uint32_t Cap_isOpenStream(CapContext ctx, CapStream stream)
 {
-    if (ctx != 0)
+    if (ctx != nullptr)
     {
         Context *c = reinterpret_cast<Context*>(ctx);
         return c->isOpenStream(stream);
@@ -141,9 +141,18 @@ DLLPUBLIC uint32_t Cap_isOpenStream(CapContext ctx, CapStream stream)
     return 0;   // closed stream
 }
 
+DLLPUBLIC void Cap_installFrameCallback(CapContext ctx, CapStream stream, void *pUserParam, CapFrameCallback callBackFun)
+{
+	if (ctx != nullptr)
+	{
+		Context *c = reinterpret_cast<Context*>(ctx);
+		return c->installFrameCallback(stream, pUserParam, callBackFun);
+	}
+}
+
 DLLPUBLIC CapResult Cap_captureFrame(CapContext ctx, CapStream stream, void *RGBbufferPtr, uint32_t RGBbufferBytes)
 {
-    if (ctx != 0)
+    if (ctx != nullptr)
     {
         Context *c = reinterpret_cast<Context*>(ctx);
         return c->captureFrame(stream, (uint8_t*)RGBbufferPtr, RGBbufferBytes) ? CAPRESULT_OK : CAPRESULT_ERR;
@@ -153,7 +162,7 @@ DLLPUBLIC CapResult Cap_captureFrame(CapContext ctx, CapStream stream, void *RGB
 
 DLLPUBLIC uint32_t Cap_hasNewFrame(CapContext ctx, CapStream stream)
 {
-    if (ctx != 0)
+    if (ctx != nullptr)
     {
         Context *c = reinterpret_cast<Context*>(ctx);
         return c->hasNewFrame(stream) ? 1: 0;
@@ -163,7 +172,7 @@ DLLPUBLIC uint32_t Cap_hasNewFrame(CapContext ctx, CapStream stream)
 
 DLLPUBLIC uint32_t Cap_getStreamFrameCount(CapContext ctx, CapStream stream)
 {
-    if (ctx != 0)
+    if (ctx != nullptr)
     {
         Context *c = reinterpret_cast<Context*>(ctx);
         return c->getStreamFrameCount(stream);
@@ -193,7 +202,7 @@ DLLPUBLIC CapResult Cap_setFrameRate(CapContext ctx, CapStream stream, uint32_t 
 DLLPUBLIC CapResult Cap_getPropertyLimits(CapContext ctx, CapStream stream, CapPropertyID propID, 
     int32_t *min, int32_t *max, int32_t *dValue)
 {
-    if (ctx != 0)
+    if (ctx != nullptr)
     {
         Context *c = reinterpret_cast<Context*>(ctx);
         if (!c->getStreamPropertyLimits(stream, propID, min, max, dValue))
@@ -207,7 +216,7 @@ DLLPUBLIC CapResult Cap_getPropertyLimits(CapContext ctx, CapStream stream, CapP
 
 DLLPUBLIC CapResult Cap_setProperty(CapContext ctx, CapStream stream, CapPropertyID propID, int32_t value)
 {
-    if (ctx != 0)
+    if (ctx != nullptr)
     {
         Context *c = reinterpret_cast<Context*>(ctx);
         if (!c->setStreamProperty(stream, propID, value))
@@ -221,7 +230,7 @@ DLLPUBLIC CapResult Cap_setProperty(CapContext ctx, CapStream stream, CapPropert
 
 DLLPUBLIC CapResult Cap_setAutoProperty(CapContext ctx, CapStream stream, CapPropertyID propID, uint32_t bOnOff)
 {
-    if (ctx != 0)
+    if (ctx != nullptr)
     {
         Context *c = reinterpret_cast<Context*>(ctx);
         if (!c->setStreamAutoProperty(stream, propID, (bOnOff==1)))
@@ -235,12 +244,12 @@ DLLPUBLIC CapResult Cap_setAutoProperty(CapContext ctx, CapStream stream, CapPro
 
 DLLPUBLIC CapResult Cap_getProperty(CapContext ctx, CapStream stream, CapPropertyID propID, int32_t *outValue)
 {
-    if (outValue == NULL)
+    if (outValue == nullptr)
     {
         return CAPRESULT_ERR;
     }
 
-    if (ctx != 0)
+    if (ctx != nullptr)
     {
         Context *c = reinterpret_cast<Context*>(ctx);
         int32_t value = 0;
@@ -256,12 +265,12 @@ DLLPUBLIC CapResult Cap_getProperty(CapContext ctx, CapStream stream, CapPropert
 
 DLLPUBLIC CapResult Cap_getAutoProperty(CapContext ctx, CapStream stream, CapPropertyID propID, uint32_t *outValue)
 {
-    if (outValue == NULL)
+    if (outValue == nullptr)
     {
         return CAPRESULT_ERR;
     }
 
-    if (ctx != 0)
+    if (ctx != nullptr)
     {
         Context *c = reinterpret_cast<Context*>(ctx);
         bool enable = false;
